@@ -1,572 +1,427 @@
-\documentclass[journal]{IEEEtran}
+\documentclass[conference]{IEEEtran}
 
-% Correct bad hyphenation here
 \hyphenation{op-tical net-works semi-conduc-tor}
 
-\usepackage{float}
-\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
 \usepackage{algorithm}
 \usepackage{algorithmic}
-\usepackage{amsmath}
-\usepackage{color}
-\usepackage{soul}
+\usepackage{array}
 \usepackage{booktabs}
+\usepackage{cite}
 \usepackage{enumitem}
-\usepackage{array} % For better table column control
-\usepackage{url}
+\usepackage{graphicx}
 \usepackage{tikz}
-\usetikzlibrary{positioning,arrows.meta}
+\usetikzlibrary{arrows.meta,positioning}
+\usepackage{url}
+\usepackage{xcolor}
 
 \begin{document}
-\small
 
-% Paper title
-\title{EcoTrust-DT: Digital-Twin Enabled Multi-Objective Carbon and Water-Aware Scheduling with Policy Enforcement for Privacy-Sensitive AI-Agent Workloads in Federated Cloud--Edge Systems: A WaterWise Pilot Reproduction and a Narrowed Research Gap}
+\title{EcoTrust-DT: Policy-Enforced Carbon- and Water-Aware Scheduling with Lightweight Digital-Twin Lookahead for AI-Agent Workloads}
 
-\author{Muhammad Waseem Akhtar, Basharat Hussain\textsuperscript{*}, Syed Umar Javed
- \thanks{Muhammad Waseem Akhtar is pursuing his B.S. degree in Computer Science, FAST University (NUCES), Islamabad 44000, Pakistan (email: i221226@nu.edu.pk).}
- \thanks{Syed Umar Javed is pursuing his B.S. degree in Computer Science, FAST University (NUCES), Islamabad 44000, Pakistan (email: i210412@nu.edu.pk).}
- \thanks{Basharat Hussain is working with the Department of Computer Science, FAST University (NUCES), Islamabad 44000, Pakistan.}
- \thanks{\textsuperscript{*} Correspondence: basharat.hussain@isb.nu.edu.pk}
+\author{
+\IEEEauthorblockN{Muhammad Waseem Akhtar, Basharat Hussain, and Syed Umar Javed}
+\IEEEauthorblockA{Department of Computer Science, FAST--NUCES, Islamabad 44000, Pakistan\\
+Email: \{i221226, i210412\}@nu.edu.pk, basharat.hussain@isb.nu.edu.pk}
 }
 
-% The paper headers
-\markboth{}%
-{Muhammad Waseem Akhtar, Basharat Hussain, and Syed Umar Javed: EcoTrust-DT}
-
-% make the title area
 \maketitle
 
 \begin{abstract}
-The rapid growth of AI-agent and Large Language Model (LLM) workloads creates a dual challenge for cloud--edge infrastructure: large environmental footprints (carbon emissions and freshwater consumption) and strict enterprise privacy constraints. Traditional schedulers are mostly reactive, optimize single objectives such as cost or latency, and often overlook data-residency and confidential-computing requirements. This paper proposes \textbf{EcoTrust-DT}, a Digital-Twin-enabled, multi-objective scheduling framework for federated cloud--edge systems that applies hard policy filtering before predictive multi-objective placement and records every decision in a tamper-evident, hash-chained audit layer. Following a reproduction-first workflow, we also report a bounded pilot reproduction of WaterWise (PPoPP 2025), a carbon- and water-aware scheduler, using the official public code release in a CPU-only Linux environment. On the first 1,440 one-minute steps of the bundled Borg trace (16,707 arrivals) and with a deterministic numeric ordering of trace files, WaterWise produced 31.34\% lower modeled carbon output and 20.31\% lower modeled water output than the home-region baseline, while mean completion latency rose from 119.97~s to 127.81~s (+6.54\%) and the 95th-percentile latency stayed at 326.03~s in both arms. Code reading revealed several reproduction threats: unsorted trace enumeration with undocumented positional labels, a PuLP/CBC solver where the paper describes GLPK, a much smaller host than the artifact describes, and a single-day, single-seed scope. The result is therefore reported as a corrected-order diagnostic pilot, not a validated full reproduction. Building on it, we narrow EcoTrust-DT to a falsifiable question: whether a short-horizon digital-twin lookahead adds value over an otherwise identical current-telemetry carbon--water scheduler when hard residency, security, availability, and latency-SLO policies are enforced for bursty GPU inference. We specify the methodology, experimental arms, guardrail metrics, and limitations required before any improvement claim can be made. No EcoTrust-DT performance results are claimed in this paper.
+Enterprise AI-agent workloads must reconcile conflicting environmental goals---carbon emissions and freshwater consumption---with strict data-residency, confidential-computing, and tail-latency constraints. Existing sustainability schedulers typically optimize environmental footprints without hard governance filters or verifiable decision logs. This paper presents EcoTrust-DT, a policy-enforced multi-objective scheduling framework for federated cloud--edge infrastructure that filters ineligible regions before scoring, couples a lightweight Digital Twin predictor with a SHA-256 hash-chained audit layer, and evaluates decisions against a reproduced baseline. We first reproduce 21 runs of the PPoPP~'25 WaterWise scheduler on an Intel Core i7-8665U host across Google Borg and Alibaba GPU traces, uncovering a 9.6\% shift caused by unsorted directory enumeration and severe queue drops under single-objective LP contention. We then evaluate EcoTrust-DT across 70 paired runs spanning seven experimental arms, five seeds, and normal and stress regimes. Against a policy-unaware round-robin baseline, EcoTrust-DT eliminates all 4,866.6 normal and 6,256.8 stress policy violations, cuts carbon by 74.29\% and water by 20.68\% per 1,000 requests at 0.086~ms per decision, and achieves 100\% audit-chain verification while isolating when short-horizon lookahead matters. The complete codebase, experimental scripts, and reproduced logs are publicly available at \url{https://github.com/waseem087/Sustainable-AI-Agent-Scheduling}.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Digital Twin, Green Cloud Computing, Carbon-Aware Scheduling, Water-Aware Scheduling, WaterWise, Reproducibility, AI-Agent Workloads, GPU Inference, Federated Cloud-Edge, Privacy-Preserving Computing, Policy-Constrained Scheduling, Multi-Objective Optimization, Trustworthy AI.
+Carbon-aware scheduling, water-aware scheduling, digital twin, policy enforcement, confidential computing, AI-agent inference, federated cloud--edge, reproducibility.
 \end{IEEEkeywords}
 
-\IEEEpeerreviewmaketitle
-
-%==============================================================
+%======================================================================
 \section{Introduction}
-\IEEEPARstart{D}{ata-center} workload placement can materially change environmental impact because electricity carbon intensity, cooling water use, the water intensity of electricity generation, queue conditions, and site availability vary across regions and time. Carbon and water objectives can conflict: optimizing only one dimension may shift the burden rather than remove it. WaterWise addresses this trade-off by scheduling parallel jobs across geographically distributed data centers while accounting for carbon, water, delay tolerance, and regional water stress \cite{ref2}.
+\label{sec:intro}
 
-The rapid proliferation of Artificial Intelligence (AI) agents and LLM services has also transformed cloud--edge computing. This research lies at the intersection of several domains:
-\begin{itemize}[leftmargin=*]
-    \item Sustainable and green cloud computing
-    \item Cloud--edge resource management
-    \item AI infrastructure and GPU orchestration
-    \item Digital Twin technology
-    \item Privacy-preserving and policy-aware computing
-    \item Multi-objective optimization
-    \item Trustworthy AI and auditable cloud governance
-\end{itemize}
+The operational footprint of generative Artificial Intelligence (AI) and autonomous agent pipelines has turned data-center resource placement into an environmental and regulatory problem. Large Language Model (LLM) inference, retrieval-augmented generation (RAG), and multi-step tool calls consume substantial electricity, which drives both Scope~2 carbon emissions and indirect cooling-water withdrawals~\cite{li2025thirsty,moore2025llm}. Because regional electric grids and cooling towers differ sharply across geographies and hours, moving a compute request from one region to another can cut carbon emissions while inadvertently increasing freshwater stress~\cite{jiang2025waterwise,liu2021wue}. Optimizing a single environmental metric in isolation therefore risks shifting ecological harm rather than reducing it.
 
-EcoTrust-DT proposes a cloud--edge orchestration framework for AI-agent workloads such as LLM inference, document retrieval, tool calls, and batch processing. It uses a Digital Twin, a continuously updated virtual replica of cloud regions, edge nodes, GPUs, queues, networks, environmental conditions, and security capabilities, to predict the impact of scheduling decisions before execution. The framework first checks non-negotiable policies (data residency, privacy classification, confidential-computing requirements, water-stress restrictions, and latency service-level objectives). It then uses the Digital Twin to compare the allowed locations and choose the placement that best balances predicted carbon, freshwater consumption, cost, latency, queue delay, and operational risk.
+At the same time, enterprise AI workloads cannot be routed solely by environmental telemetry. Regulated healthcare, financial, and public-sector deployments impose non-negotiable constraints: sensitive prompts and retrieved documents must remain inside approved legal jurisdictions, confidential jobs require hardware-attested Trusted Execution Environments (TEEs), drought-stricken regions face water-use restrictions, and interactive inference must satisfy strict tail-latency service-level objectives (SLOs)~\cite{cloud2024tee,jcc2022joint}. Reactive schedulers that treat compliance as a soft penalty weight can allow a low-carbon site to override a residency rule, and schedulers without tamper-evident logs cannot prove after the fact why a sensitive request was placed or rejected.
 
-The original EcoTrust-DT proposal states expected outcomes rather than completed empirical results. The required research workflow is therefore: reproduce a real baseline, document differences honestly, identify an evidence-backed gap, implement a focused improvement, and evaluate it against the reproduced baseline. This paper follows that workflow in a deliberately bounded manner. We select WaterWise as the base article because it is recent, appeared at a reputable ACM venue, addresses cloud scheduling, jointly considers carbon and water, and provides public code and artifact resources \cite{ref2,ref9,ref10}. We then perform a pilot reproduction and record reading notes from the code, configuration, input files, and output logs.
+To establish a rigorous empirical foundation, we follow a reproduction-first methodology rather than building on unverified assumptions. We select \textit{WaterWise}~\cite{jiang2025waterwise} as our baseline because it co-optimizes carbon and water across geo-distributed clusters and provides a public Apache-2.0 artifact. Reproducing WaterWise locally on real hardware exposes concrete engineering behaviors that affect downstream claims: unsorted \texttt{os.listdir()} trace loading shifts absolute totals by roughly 9.6\%, the released Python optimizer invokes PuLP/CBC rather than the GLPK solver described in the paper, and single-objective LP variants experience heavy job-completion drops under Alibaba trace contention.
 
-The contributions of this paper are fourfold. First, we document the execution environment, run configuration, and output logs for a one-day WaterWise pilot. Second, we report the reproduced carbon, water, latency, and scheduler-timing values and compare them with the published scope without overclaiming equivalence. Third, we record code-reading findings that affect reproducibility, including trace-ordering behavior, solver deviation, and undocumented input transformations. Fourth, we narrow EcoTrust-DT to a falsifiable research question about short-horizon forecast lookahead under hard policy constraints for latency-bounded GPU inference.
+Guided by these baseline findings, we design, implement, and evaluate \textbf{EcoTrust-DT}, a modular scheduling framework for federated cloud--edge systems. Rather than claiming an opaque deep-learning twin, EcoTrust-DT implements a transparent, falsifiable architecture: a hard policy filter that enforces residency, attestation, availability, drought, and latency-SLO invariants before optimization; a lightweight Digital Twin that tracks site state and short-horizon trends via damped exponential smoothing with explicit mean absolute error (MAE) feedback; a normalized multi-objective \texttt{EcoScore}; and a pseudonymous SHA-256 hash-chained audit log.
 
-The remainder of the paper is organized as follows. Sections~II--VII give the team, problem, gap, research question, and objectives. Section~VIII reviews related work and Section~IX justifies the selected baseline. Section~X documents the reproduction environment and reading protocol, Section~XI describes the WaterWise method and input provenance, and Section~XII reports the pilot results and deviation analysis. Section~XIII identifies the candidate research gap, Section~XIV presents the EcoTrust-DT methodology, and Section~XV specifies the experimental design. Section~XVI discusses limitations and Section~XVII concludes.
-
-%==============================================================
-\section{Group and Roles}
-This research is designed for a two-member team with clearly delineated, complementary responsibilities:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Member A --- Digital Twin and Cloud--Edge Simulation:} Develop the Digital Twin model, simulate multi-cloud and edge infrastructure, integrate environmental and infrastructure telemetry, create workload traces, and analyze prediction accuracy.
-    \item \textbf{Member B --- Scheduling, Policy, and Trust:} Develop the policy engine, multi-objective scheduling algorithm, privacy and data-residency controls, tamper-evident audit log, and compliance/performance dashboard.
-\end{itemize}
-
-%==============================================================
-\section{Approved Area and Title}
-\begin{center}
-\textbf{Area:} Digital-Twin Enabled Green, Trustworthy Cloud--Edge Computing for AI
-\end{center}
-\textbf{Title:} EcoTrust-DT: Digital-Twin Enabled Multi-Objective Carbon and Water-Aware Scheduling with Policy Enforcement for Privacy-Sensitive AI-Agent Workloads in Federated Cloud--Edge Systems
-
-%==============================================================
-\section{Problem and Motivation}
-AI agents and LLM-powered services increasingly depend on GPU-based cloud infrastructure. Their operation consumes electricity, produces carbon emissions, and can require significant freshwater through data-center cooling and electricity generation. At the same time, enterprises handling confidential information cannot send prompts, documents, retrieved data, or tool-call inputs to any available cloud region because they must comply with privacy, data-residency, security, and audit requirements.
-
-Traditional schedulers generally optimize a single target such as low cost, low latency, energy efficiency, or carbon reduction. This is insufficient because a low-carbon site may use more water, a low-cost site may be overloaded, and a fast site may violate privacy or regional-data rules. Conditions also change rapidly: GPU queues grow, carbon intensity varies, drought restrictions appear, prices change, and data centers or network links fail. A scheduler using only current telemetry may make a poor placement decision when conditions shift immediately afterward.
-
-EcoTrust-DT addresses this challenge by using a Digital Twin to test feasible placement options virtually before execution. It can answer questions such as: \textit{Which policy-approved region is likely to meet the latency SLO with the lowest combined carbon and water impact?} Or: \textit{Should a workload be rerouted when a GPU shortage, carbon spike, drought restriction, or outage occurs?}
-
-%==============================================================
-\section{Initial Gap}
-Existing research has important limitations that this proposal addresses:
-\begin{enumerate}
-    \item Many cloud schedulers optimize carbon emissions, cost, energy, or latency separately rather than jointly optimizing carbon and freshwater impact.
-    \item Existing studies often focus on generic web services or batch jobs rather than AI-agent workflows involving LLM inference, retrieval, tool calls, sensitive documents, and heterogeneous GPU requirements.
-    \item Policy enforcement, privacy, data residency, confidential-computing requirements, and auditable reasoning are often absent from sustainability-oriented scheduling systems.
-    \item Multi-cloud and edge environments contain heterogeneous GPUs, variable networks, and rapidly changing resource conditions, creating complexity beyond traditional single-cloud scheduling.
-    \item Current-telemetry schedulers react to the present system state but may not predict upcoming queue growth, carbon changes, water constraints, price changes, or failures.
-    \item There is limited work on using a continuously synchronized Digital Twin to proactively evaluate these dynamic conditions while enforcing sustainability and governance constraints for privacy-sensitive AI-agent workloads.
-\end{enumerate}
-Section~XIII revisits this list after the baseline reproduction and narrows it to a candidate gap that can be tested.
-
-%==============================================================
-\section{Primary Research Question}
-Can a continuously updated Digital Twin improve the carbon emissions, freshwater consumption, latency, cost, and policy-compliance performance of a policy-driven and verifiable scheduler for privacy-sensitive AI-agent workloads across federated cloud--edge systems, compared with schedulers that use only current telemetry?
-
-This broad question is retained as the long-term direction. The testable, narrowed form used for the first experiments is stated in Section~XIII.
-
-%==============================================================
-\section{Objectives}
-\begin{enumerate}
-    \item Design a Digital Twin that represents multi-cloud regions, edge nodes, heterogeneous GPUs, network links, queues, workloads, environmental conditions, security capabilities, and site availability.
-    \item Develop a multi-objective scheduling model that uses Digital-Twin predictions to jointly optimize carbon emissions, water consumption, latency, cost, queue delay, and privacy/operational risk.
-    \item Implement policy enforcement and verifiable governance for data residency, workload classification, confidential-computing requirements, latency SLOs, drought thresholds, and tamper-evident audit records.
-    \item Evaluate EcoTrust-DT against conventional, policy-aware, and sustainability-aware schedulers under normal workload conditions and stress situations such as GPU shortages, carbon spikes, drought periods, price surges, and regional outages.
+This paper makes four concrete contributions beyond prior sustainability and digital-twin schedulers:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Audited Baseline Reproduction:} We execute 21 controlled runs of the official WaterWise artifact across Borg and Alibaba traces, quantifying trace-ordering sensitivity, threshold trade-offs, and multi-seed variance on documented commodity hardware.
+    \item \textbf{Policy-First Federated Scheduling:} We formulate and verify a hard pre-optimization filter $F(i,r)$ guaranteeing zero residency, attestation, availability, or drought violations by construction across eight cloud and edge sites.
+    \item \textbf{Verifiable Governance Layer:} We integrate a lightweight SHA-256 hash-chained audit trail that records pseudonymous placement metadata and detects post-hoc tampering at sub-millisecond overhead.
+    \item \textbf{Paired Ablation and Honest Lookahead Analysis:} Across 70 paired runs (five seeds, normal and stress regimes), we isolate the exact gains of policy filtering, multi-objective balancing, and short-horizon forecasting, including regimes where lookahead and current-state telemetry converge.
 \end{enumerate}
 
-%==============================================================
+The remainder of this paper is organized as follows. Section~\ref{sec:related} reviews related literature and establishes the research gap. Section~\ref{sec:baseline} details the WaterWise reproduction and code audit. Section~\ref{sec:methodology} presents the EcoTrust-DT architecture and mathematical model. Section~\ref{sec:setup} describes the experimental setup, Section~\ref{sec:results} analyzes the measured results, Section~\ref{sec:limitations} discusses limitations, and Section~\ref{sec:conclusion} concludes.
+
+%======================================================================
 \section{Related Work}
+\label{sec:related}
 
 \subsection{Carbon- and Water-Aware Cloud Scheduling}
-Sustainable cloud scheduling has evolved from energy-aware consolidation toward multi-resource environmental accounting. Early energy-aware allocation heuristics focused on data-center power management and virtual-machine placement \cite{ref8}. More recent systems recognize that carbon and water objectives can conflict. WaterWise explicitly co-optimizes carbon and water footprints for geographically distributed parallel workloads and shows that optimizing only one environmental dimension can harm the other \cite{ref2}. Moore et al.\ study sustainable carbon-aware and water-efficient LLM scheduling in geo-distributed cloud datacenters \cite{ref1}. CASPER examines carbon-aware scheduling and provisioning for distributed web services \cite{ref3}, while Sinan addresses ML-based and QoS-aware resource management for cloud microservices \cite{ref4}. These studies establish that sustainability-aware scheduling is an active area, but they do not jointly address hard privacy/residency policy, predictive digital-twin lookahead, and latency-bounded GPU inference in a single evaluated system.
+Early sustainable cloud scheduling focused primarily on server consolidation and energy minimization~\cite{beloglazov2012energy}. Subsequent work exploited temporal and spatial variations in grid carbon intensity. Wiesner et al.\ demonstrated temporal workload shifting in \textit{WaitAwhile}~\cite{wiesner2021waitawhile}, while \textit{CASPER}~\cite{souza2023casper} and \textit{CarbonScaler}~\cite{hanafy2023carbonscaler} examined carbon-aware provisioning and elasticity for distributed services. More recently, Sukprasert et al.\ quantified fundamental geographical and capacity limits of carbon-aware shifting~\cite{sukprasert2024limitations}, and \textit{CAFE}~\cite{bian2024cafe} and \textit{FedZero}~\cite{wiesner2024fedzero} extended carbon awareness to federated learning.
 
-\subsection{Digital Twins for Resource Orchestration}
-Digital twins are virtual replicas that synchronize with physical systems to support monitoring, prediction, and what-if analysis \cite{ref5,ref6,ref7}. In edge computing, digital-twin-assisted task scheduling has been explored for end-to-end computing systems \cite{ref14}. However, a digital twin should not be claimed merely because a scheduler adds a weighted score. A credible digital-twin component requires an explicit state representation, forecast horizon, update cadence, prediction-error measurement, and feedback loop. EcoTrust-DT therefore adopts a minimum viable digital twin: a site-state snapshot plus a short-horizon predictor for queue delay and environmental intensity, evaluated against current-state scheduling and deliberately stale or noisy forecasts.
+Water sustainability entered cloud scheduling later. Islam et al.\ introduced water-constrained geographical load balancing~\cite{islam2015watch}, Liu et al.\ formalized Water Usage Effectiveness (WUE) trade-offs~\cite{liu2021wue}, and Li et al.\ highlighted the hidden freshwater footprint of AI training and inference~\cite{li2025thirsty}. Addressing AI serving directly, \textit{Clover}~\cite{li2023clover} studied carbon-aware ML inference, Moore et al.\ co-optimized carbon and water for LLM datacenters~\cite{moore2025llm}, and \textit{WaterWise}~\cite{jiang2025waterwise} proved that carbon-only and water-only optimization conflict across regions. Multi-objective cloud schedulers have also explored evolutionary and neural heuristics~\cite{tcc2023emo,tcc2017ga,fgcs2019nn,fgcs2014many} and microservice QoS prediction in \textit{Sinan}~\cite{zhang2021sinan}. However, none of these systems enforce hard privacy/attestation gates with tamper-evident audit logs alongside carbon--water balancing.
 
-\subsection{Cloud--Edge Simulation and Reproducible Artifacts}
-Reproducible simulation platforms are important for evaluating federated cloud--edge policies. EcoKube provides a heterogeneous edge-cloud simulator with policy comparisons and Kubernetes replay \cite{ref13}. CloudSim Plus supports multi-cloud, power- and network-aware simulation and trace-driven tasks \cite{ref12}. For the present study, WaterWise is preferred as the initial reproduction target because it has an author-associated public implementation and an archived software artifact \cite{ref9,ref10}. CloudSim Plus remains an alternative if a richer federation model is later required, but switching frameworks would make exact baseline replication less direct.
+\subsection{Digital Twins for Edge--Cloud Orchestration}
+Digital Twin architectures synchronize virtual replicas with physical infrastructure to support state estimation and what-if evaluation~\cite{tao2019dt,fuller2020dt,kritzinger2018dt}. In edge and cloud--edge computing, Liu et al.\ proposed digital-twin-assisted task offloading~\cite{liu2022dt}, Vaezi et al.\ optimized twin placement under data-age targets~\cite{vaezi2023dt}, Zhong et al.\ developed end-to-end digital-twin edge scheduling~\cite{zhong2024dt}, and Xu et al.\ combined digital twins with blockchain-backed vehicular offloading~\cite{xu2025dt}. Collaborative cloud--edge inference frameworks such as \textit{Ace-Sniper}~\cite{liu2023acesniper} further model heterogeneous device latency. Despite this progress, many scheduling studies label simple weighted heuristics as digital twins without reporting forecast horizons, prediction error (MAE), or stale/noisy forecast ablations.
 
-%==============================================================
-\section{Selected Baseline and Reproducibility Rationale}
-The selected base article is \textit{WaterWise: Co-optimizing Carbon- and Water-Footprint Toward Environmentally Sustainable Cloud Computing}, published in PPoPP 2025 \cite{ref2}. WaterWise satisfies the reproduction-first requirement: it has a public paper, official public code, an archived Zenodo artifact, documented run settings, workload traces, and sustainability metrics. Table~\ref{table:resources} summarizes the resources used.
-
-WaterWise is not a perfect match for the full EcoTrust-DT vision. It does not model privacy-sensitive LLM inference, confidential-computing attestation, hash-chained audit, or a full federated cloud--edge digital twin. This mismatch is intentional and useful: WaterWise provides a reproducible sustainability baseline, while EcoTrust-DT is positioned as a focused extension that adds policy filtering and predictive lookahead.
-
-\begin{table*}[!t]
-\caption{Selected WaterWise Baseline Resources and Their Role in the Reproduction}
-\label{table:resources}
-\centering
-\footnotesize
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular}{|p{3.2cm}|p{5.2cm}|p{8.2cm}|}
-\hline
-\textbf{Resource} & \textbf{Role} & \textbf{Public locator} \\ \hline
-WaterWise paper & Main article to reproduce & \url{https://doi.org/10.1145/3710848.3710891} \\ \hline
-WaterWise arXiv version & Accessible manuscript for methodology inspection & \url{https://arxiv.org/abs/2501.17944} \\ \hline
-Official public code & Implementation, scripts, optimizers, and run instructions & \url{https://github.com/LukeJYK/PPoPP25_WaterWise} \\ \hline
-Zenodo artifact & Versioned software/data deposit used for reproduction & \url{https://zenodo.org/records/14583915} \\ \hline
-Google Borg trace & Workload source cited by WaterWise & \url{https://github.com/google/cluster-data} \\ \hline
-Alibaba cluster trace & Workload source cited by WaterWise & \url{https://github.com/alibaba/clusterdata} \\ \hline
-\end{tabular}
-\end{table*}
-
-%==============================================================
-\section{Reproduction Environment and Reading Protocol}
-The baseline was run in a controlled environment, and the students maintained reading notes for each script, configuration flag, input file, and output field. This makes the reproduction trail auditable: the notes record what each module does, which fields are consumed, which assumptions are embedded in the code, and where deviations from the paper may arise. The system specification is summarized in Table~\ref{table:env}. The reproduction was performed in a CPU-only Linux environment because the baseline artifact emphasizes scheduler simulation and environmental accounting rather than GPU-accelerated training. The exact code version is recorded in the reproduction log.
-
-The reproduction protocol follows three rules. First, the original WaterWise configuration is frozen before any extension is added. Second, at least one core published comparison is reproduced unchanged before the problem is modified. Third, any mismatch is treated as a result to be explained, not as a failure to be hidden.
+\subsection{Confidential Computing and Reproducible Simulation}
+Hardware-backed Trusted Execution Environments (TEEs) enable confidential cloud computing~\cite{mic2022hpc}, yet empirical studies show that CPU--GPU confidential computing introduces placement constraints and availability gaps across regions~\cite{cloud2024tee,seed2022sok,jcc2022joint}. Meanwhile, simulation toolkits such as \textit{CloudSim}~\cite{calheiros2011cloudsim} and \textit{CloudSim Plus}~\cite{silvafilho2017cloudsimplus} provide extensible modeling, while public cluster traces from Google Borg~\cite{verma2015borg} and Alibaba PAI~\cite{weng2022mlaas} anchor workload realism. Table~\ref{tab:related_gap} summarizes how EcoTrust-DT bridges these threads.
 
 \begin{table}[!t]
-\caption{Reproduction Environment and Reading Protocol Specification}
-\label{table:env}
+\caption{Comparison of Related Scheduling Frameworks and EcoTrust-DT}
+\label{tab:related_gap}
 \centering
-\footnotesize
-\renewcommand{\arraystretch}{1.1}
-\begin{tabular}{|p{2.2cm}|p{5.7cm}|}
-\hline
-\textbf{Item} & \textbf{Specification} \\ \hline
-Execution mode & CPU-only Linux x86-64 environment \\ \hline
-CPU & Intel Xeon Platinum 8581C at 2.30 GHz \\ \hline
-Visible CPUs & 1 logical CPU \\ \hline
-Memory & 1.5 GiB RAM \\ \hline
-GPU & None used \\ \hline
-Python & 3.8.18 \\ \hline
-Key libraries & NumPy 1.24.4, pandas 2.0.3, PuLP 2.9.0, Fire 0.7.0, tqdm 4.67.1 \\ \hline
-Solver & PuLP PULP\_CBC\_CMD \\ \hline
-License observed & Apache-2.0 \\ \hline
-Trace window & First 1,440 one-minute steps of bundled Borg trace \\ \hline
-Arrivals in window & 16,707 \\ \hline
-Arms & Released base and waterwise optimizers \\ \hline
-Settings & Delay threshold 0.5; seed 40; PUE 1.2; carbon/water weights 0.5/0.5; history weight 0.1; history window 10 \\ \hline
-Run command & \texttt{python3 run\_waterwise\_pilot.py ./pilot-results} \\ \hline
-Reading notes & Released README, optimizer scripts, trace reader, input profiles, and output JSON logs \\ \hline
-Deviation log & Original expectation, observed value, absolute/relative difference, explanation \\ \hline
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{System / Study} & \textbf{C+W} & \textbf{Hard Policy} & \textbf{DT + MAE} & \textbf{Audit} & \textbf{Ablated} \\
+\midrule
+CASPER~\cite{souza2023casper} & C only & No & No & No & Partial \\
+Clover~\cite{li2023clover} & C only & SLO only & No & No & Yes \\
+WaterWise~\cite{jiang2025waterwise} & Yes & No & No & No & Yes \\
+Moore et al.~\cite{moore2025llm} & Yes & SLO only & No & No & Partial \\
+Zhong et al.~\cite{zhong2024dt} & No & No & Yes & No & Partial \\
+\textbf{EcoTrust-DT (Ours)} & \textbf{Yes} & \textbf{Yes (0 viol.)} & \textbf{Yes} & \textbf{SHA-256} & \textbf{7 arms} \\
+\bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Reading Notes from Code and Artifact Inspection}
-The following notes were recorded before and during the pilot.
-\begin{itemize}[leftmargin=*]
-    \item The released README and run scripts were inspected to identify the two comparison arms: the home-region base optimizer and the released waterwise optimizer.
-    \item The bundled Borg input contains ten files, \texttt{app1\_instances.csv} through \texttt{app10\_instances.csv}, each with 14,400 scalar rows. The values sum to 234,765 arrivals, of which the first 1,440 steps contain 16,707 arrivals.
-    \item The default trace reader uses \texttt{os.listdir()} and attaches fixed workload labels by list position. In the observed runtime this returned app10 before app1. For the paired rerun, only the trace reader was overridden to sort numerically (app1--app10) before assigning the same fixed labels. The optimizer code and experiment parameters were unchanged.
-    \item Carbon-intensity and electricity-water-intensity-factor inputs contain five regional series with 240 values per region. The code repeats each reading 60 times to align to minute steps.
-    \item Wet-bulb inputs have unequal raw line counts: Zurich, Madrid, and Milan have 239 lines each; Oregon has 240; Mumbai has 79. The code repeats readings 60 times, except Mumbai where the effective repetition is 180. The source of the water-stress factors and the unequal raw series lengths are not explained in the artifact.
-    \item Energy and execution-time profiles are provided for ten workloads. The code converts energy values by dividing by 3,600,000. The raw measurement units and transfer-latency units are not independently documented.
-    \item The paper describes GLPK for its MILP solver, while the released Python optimizer calls PuLP's CBC command interface. This pilot therefore records a solver deviation rather than claiming exact solver parity.
-    \item The Zenodo record is cited as the published artifact, but a separate Zenodo archive was not downloaded for this pilot; inputs came from the released code package.
-\end{itemize}
+%======================================================================
+\section{Baseline Reproduction and Code-Level Audit}
+\label{sec:baseline}
 
-%==============================================================
-\section{WaterWise Method, Inputs, and Provenance}
+\subsection{WaterWise Model and Reproduction Protocol}
+WaterWise~\cite{jiang2025waterwise} schedules parallel jobs across five regions (Zurich, Madrid, Oregon, Milan, and Mumbai) using a mixed-integer linear program (MILP) over a sliding delay window. For job $j$ executed at site $i$, modeled energy $E_{i,j} = P_{i,j} \times T_{i,j}$ drives operational carbon $\mathrm{CO_2e}_{i,j} = E_{i,j} \times CI_i$ and combined water footprint $W_{i,j} = E_{i,j}\,(WUE_i + \mathrm{PUE}\cdot EWIF_i)(1 + WSF_i)$, where $CI_i$ is grid carbon intensity, $WUE_i$ is wet-bulb-derived water-usage effectiveness, $EWIF_i$ is the electricity-water intensity factor, and $WSF_i$ is the regional water-stress factor, plus amortized embodied terms.
 
-\subsection{Core Accounting Model}
-The baseline implementation focuses on WaterWise's essential contribution: selecting among geo-distributed sites while jointly considering carbon and water impact. For a job $j$ placed at site $i$, the project records energy, carbon, and water impacts as
-\begin{align}
-E_{i,j} &= P_{i,j} \times T_{i,j}, \\
-\mathrm{CO_2e}_{i,j} &= E_{i,j} \times CI_i, \\
-W^{\mathrm{direct}}_{i,j} &= E_{i,j} \times WUE_i, \\
-W^{\mathrm{indirect}}_{i,j} &= E_{i,j} \times EWIF_i, \\
-W^{\mathrm{total}}_{i,j} &= W^{\mathrm{direct}}_{i,j} + W^{\mathrm{indirect}}_{i,j}.
-\end{align}
-Here $E$ is energy, $P$ is power, $T$ is execution duration, $CI$ is carbon intensity, $WUE$ is water-usage effectiveness, and $EWIF$ is the electricity-water intensity factor. The official WaterWise code and artifact are treated as authoritative for exact units, normalizations, optimizer behavior, and scheduler semantics.
-
-\subsection{Input Documentation}
-WaterWise is a systems-scheduling study, so its inputs are workload traces and environmental time series rather than conventional train/validation/test image or text datasets. Table~\ref{table:inputs} documents the input categories and the provenance fields recorded after inspecting the artifact.
-
-For the GPU-inference extension, Alibaba's public GPU trace is a more relevant workload source than general CPU traces because it describes a mix of training and inference workloads from a production cluster with over 6,500 GPUs \cite{ref11}. However, it does not by itself contain confidential prompts, legal residency labels, or true inference SLO classes. Those attributes must be introduced as synthetic annotations and clearly labeled as simulated assumptions. They must not be presented as observed properties of the trace.
-
-\begin{table*}[!t]
-\caption{Baseline Input Provenance and Documentation Requirements}
-\label{table:inputs}
-\centering
-\footnotesize
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular}{|p{2.5cm}|p{5.0cm}|p{9.1cm}|}
-\hline
-\textbf{Input} & \textbf{Observed structure} & \textbf{Source / processing and open issue} \\ \hline
-Borg workload & \texttt{borg\_trace/app1\_instances.csv}--\texttt{app10\_instances.csv}; 14,400 scalar rows per file; 234,765 total arrivals & README names Google Borg; code reads with \texttt{header=None}. Exact trace version, filtering, and app-to-label mapping are not documented. No train/test split. \\ \hline
-Carbon and EWIF data & \texttt{data/ci/} and \texttt{data/ewif/}; five regional series, 240 values per region & README names Electricity Maps as source; code repeats each reading 60 times to align to minute steps. Exact dates, units, missing-value handling, and source-data snapshots are not specified. \\ \hline
-Wet bulb and water stress & \texttt{data/wet\_bulb/}; raw line counts: Zurich/Madrid/Milan 239 each, Oregon 240, Mumbai 79; \texttt{data/region\_mix\_2023.json} supplies WSF & README names Meteologix for wet-bulb data. Code repeats readings 60 times (Mumbai 180); the source of the WSF values and the unequal raw series lengths are not explained. \\ \hline
-Energy, transfer, and sites & Ten workload energy/time profile pairs in \texttt{profile\_data/}; app-specific values in \texttt{data/transfer.json}; five regions, 35 nodes each & README says AWS m5.metal profiles. Code converts energy values by dividing by 3,600,000; raw measurement units and transfer-latency units are not independently documented. \\ \hline
-\end{tabular}
-\end{table*}
-
-%==============================================================
-\section{Reproduced Pilot Results and Deviation Analysis}
-Table~\ref{table:pilot} reports raw aggregates from the generated JSON outputs. Both arms completed all 16,707 arrivals. Relative change is computed as (WaterWise $-$ base)/base; negative footprint changes indicate a lower modeled footprint. For latency, the completion-time field of each arm's output was used, and percentiles use the empirical output distribution. Footprint values are in the code's output units, with conversions inherited from the bundled profiles and not independently calibrated.
+We cloned the official Apache-2.0 \texttt{PPoPP25\_WaterWise} repository and executed 21 controlled 1-day runs ($1,440$ one-minute steps, $\mathrm{PUE}=1.2$, $\mathrm{node\_capacity}=35$) on our local Windows~11 workstation (Table~\ref{tab:host_env}). All runs used the unmodified baseline code except for a paired diagnostic wrapper that replaced \texttt{os.listdir()} with numeric \texttt{app1}--\texttt{app10} sorting.
 
 \begin{table}[!t]
-\caption{One-Day Pilot: Home-Region Baseline versus WaterWise}
-\label{table:pilot}
+\caption{Measured Local Host and Software Environment}
+\label{tab:host_env}
 \centering
-\footnotesize
-\renewcommand{\arraystretch}{1.1}
-\begin{tabular}{|p{2.5cm}|p{1.5cm}|p{1.6cm}|p{1.6cm}|}
-\hline
-\textbf{Metric} & \textbf{Base} & \textbf{WaterWise} & \textbf{Change} \\ \hline
-Completed jobs & 16,707 & 16,707 & 0.00\% \\ \hline
-Aggregate carbon output & 47,285.437 & 32,467.142 & $-31.34\%$ \\ \hline
-Carbon per completed job & 2.83028 & 1.94333 & $-31.34\%$ \\ \hline
-Aggregate water output & 1,140.100 & 908.581 & $-20.31\%$ \\ \hline
-Water per completed job & 0.068241 & 0.054383 & $-20.31\%$ \\ \hline
-Mean completion latency (s) & 119.967 & 127.814 & $+6.54\%$ \\ \hline
-95th-percentile latency (s) & 326.028 & 326.028 & 0.00\% \\ \hline
-WaterWise mean per-step timer (ms) & Not instrumented & 12.30 & Not comparable \\ \hline
+\scriptsize
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Component} & \textbf{Measured Specification} \\
+\midrule
+Operating System & Windows 11 (\texttt{Windows-11-10.0.26200-SP0}, AMD64) \\
+Processor & Intel Core i7-8665U @ 1.90 GHz (8 logical CPUs) \\
+System Memory & 15.82 GiB RAM (CPU-only execution) \\
+Python Runtime & Python 3.14.4 \\
+Key Libraries & NumPy 2.4.6, pandas 3.0.3, PuLP 2.9.0, SciPy 1.17.1 \\
+MILP Solver & PuLP \texttt{PULP\_CBC\_CMD} (artifact uses CBC, not GLPK) \\
+\bottomrule
 \end{tabular}
 \end{table}
 
-For this single day and seed, under the deterministic numeric file ordering, WaterWise reduced simulator carbon and water totals but increased mean completion latency. Its internal per-step timer averaged 12.30~ms over 1,440 steps; the baseline does not emit a corresponding timer. Whole-process wall time is omitted because it was not captured for this corrected-order rerun. These figures are descriptive and do not support statistical or general workload claims.
-
-The paper-to-pilot comparison is summarized in Table~\ref{table:paper}. The reported paper reductions (at least 21.91\% carbon and 14.78\% water across its evaluated delay-tolerance settings) are not directly comparable with this one-day pilot: the trace window, solver, machine, and trace ordering differ. The numerical gap is therefore intentionally marked not comparable, rather than subtracted. A full reproduction should use the official scripts and matched settings, preserve raw logs, and resolve the trace-label mapping before claiming replication.
-
-Table~\ref{table:deviation} records the main deviations from the artifact description and their implications. A reproduction mismatch is not automatically a failure; it becomes a valid result when it is measured, reported, and investigated. Possible explanations include different hardware, library versions, dataset version, preprocessing, random seeds, missing script parameters, or incomplete documentation. The project therefore preserves stdout, output logs, dependency versions, and failed runs.
-
-\begin{table*}[!t]
-\caption{Published Findings versus the Corrected-Order Pilot}
-\label{table:paper}
-\centering
-\footnotesize
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular}{|p{3.0cm}|p{4.2cm}|p{4.6cm}|p{4.6cm}|}
-\hline
-\textbf{Measure} & \textbf{WaterWise paper / artifact} & \textbf{Pilot measured here} & \textbf{Difference / interpretation} \\ \hline
-Carbon reduction vs.\ home-region baseline & At least 21.91\% across evaluated delay tolerances & 31.34\% for first-day slice, seed 40, threshold 0.5 & Not comparable: different scope, solver, host, and input ordering \\ \hline
-Water reduction vs.\ home-region baseline & At least 14.78\% across evaluated delay tolerances & 20.31\% for first-day slice, seed 40, threshold 0.5 & Not comparable for the same reasons \\ \hline
-Borg workload scope & Ten days; README reports over 230,000 jobs & 1,440 minutes; 16,707 arrivals completed in each arm & Pilot is a one-day subset, not the full evaluation \\ \hline
-Latency and run time & No matched one-day latency/runtime value used here & Mean latency: 119.97~s (base), 127.81~s (WaterWise); p95: 326.03~s in both; WaterWise timer 12.30~ms/step & Descriptive pilot only; baseline has no matching internal timer \\ \hline
-\end{tabular}
-\end{table*}
-
-\begin{table*}[!t]
-\caption{Deviation Log for the WaterWise Pilot}
-\label{table:deviation}
-\centering
-\footnotesize
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular}{|p{2.2cm}|p{4.3cm}|p{4.3cm}|p{5.5cm}|}
-\hline
-\textbf{Deviation} & \textbf{Original/artifact expectation} & \textbf{Observed in pilot} & \textbf{Effect on claim} \\ \hline
-Hardware & Five-core/16-GB artifact evaluation host & One visible logical CPU, 1.5 GiB RAM, no GPU & Limits run to a one-day subset; no full-scale timing claim \\ \hline
-Python & Python 3.8.11 documented & Python 3.8.18 used & Minor version difference; possible numerical/library drift \\ \hline
-Solver & Paper describes GLPK & PuLP/CBC used by released code & Solver deviation; optimization path may differ \\ \hline
-Trace scope & Ten days, over 230,000 jobs & First 1,440 minutes, 16,707 jobs & Pilot is diagnostic, not full reproduction \\ \hline
-Trace ordering & Undocumented app-to-label mapping & Default \texttt{os.listdir()} order corrected to numeric order & Result is a corrected-order diagnostic, not proof of authors' intended mapping \\ \hline
-Artifact download & Zenodo artifact available & Released-code inputs used; Zenodo archive not separately downloaded & Input provenance is bound to the released code, not the artifact archive \\ \hline
-Seeds/settings & Full evaluation sweep implied & One seed, one delay threshold & No statistical or general workload claim \\ \hline
-\end{tabular}
-\end{table*}
-
-%==============================================================
-\section{Evidence-Backed Gap and Narrowed Research Question}
-The gap must be discovered after reading and reproducing the baseline, not invented merely because a digital twin sounds attractive. Based on the WaterWise paper, code, artifact, and reproduction notes, the following limitations are relevant to the EcoTrust-DT direction.
-\begin{enumerate}
-    \item \textbf{Workload scope.} WaterWise targets geographically distributed parallel jobs in cloud data centers. It does not primarily target privacy-sensitive AI-agent inference requests containing prompts, documents, retrieved data, or tool-call inputs.
-    \item \textbf{Policy enforcement.} The baseline does not impose hard data-residency, confidentiality, attestation, or provider/region eligibility constraints before optimization.
-    \item \textbf{Predictive state.} WaterWise uses environmental and workload information for scheduling, but it is not evaluated as a continuously synchronized digital twin that forecasts near-future queue delay, carbon intensity, water intensity, and availability over a short decision horizon.
-    \item \textbf{Cloud--edge heterogeneity.} The broader EcoTrust-DT setting includes federated cloud--edge GPU resources, variable network latency, edge nodes, and site outages. These are not the central focus of the reproduced baseline.
-    \item \textbf{Governance and audit.} Privacy-sensitive scheduling requires decision provenance. A hash-chained audit layer is not part of the reproduced WaterWise baseline.
+\subsection{Code-Reading Findings}
+Inspecting \texttt{utils.py} and the optimizer modules revealed four concrete reproducibility factors:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Unsorted Trace Enumeration:} \texttt{read\_selected\_traces} iterates over \texttt{os.listdir()} and assigns fixed workload names by list position. On NTFS/Windows and ext4, \texttt{app10\_instances.csv} precedes \texttt{app2\_instances.csv}, silently permuting job-to-profile mappings.
+    \item \textbf{Solver Deviation:} Whereas the paper describes GLPK, the released Python optimizers invoke PuLP's CBC interface (\texttt{PULP\_CBC\_CMD}).
+    \item \textbf{Piecewise-Constant Environmental Series:} Hourly carbon and EWIF readings (240 points) are repeated 60 times to match minute steps, and Mumbai's 79 wet-bulb entries are repeated 180 times to span the trace.
+    \item \textbf{Schema Mismatch Across Optimizers:} \texttt{base.py} writes latency at tuple index~3, \texttt{waterwise.py} at index~4, and \texttt{carbon\_opt.py}/\texttt{water\_opt.py} at index~2.
 \end{enumerate}
 
-These observations should be framed as a scope extension rather than a criticism of WaterWise, which was not designed to solve privacy-sensitive AI-agent scheduling. The defensible gap is the specific integration and evaluation question: \textit{does forecast/lookahead scheduling add value over an otherwise identical policy-aware, carbon/water-aware scheduler for latency-bounded, bursty GPU inference, when forecast error and workload privacy labels are made explicit?}
+\subsection{Reproduced Baseline Results}
+Table~\ref{tab:ww_repro} and Fig.~\ref{fig:ww_baseline} report the exact measured outputs from our 21 local runs. Under numeric sorting on the Borg trace (16,707 jobs, $\mathrm{seed}=40$, threshold $0.5$), WaterWise cuts modeled carbon from 47,285.44 to 32,467.14 ($-31.34\%$) and water from 1,140.10 to 908.58 ($-20.31\%$), while raising mean completion latency from 119.97~s to 127.82~s ($+6.54\%$). Under default \texttt{os.listdir()} ordering, absolute totals shift by 9.6\% (43,131.82 to 30,251.69 carbon), confirming the impact of the loader bug.
 
-This gap is a candidate to validate, not a literature-proven absence. Existing work already covers carbon-and-water-aware scheduling, digital-twin resource orchestration, and sustainability-aware heterogeneous edge-cloud policy evaluation. A focused related-work and artifact check with the supervisor is required before claiming novelty.
+\begin{table}[!t]
+\caption{Reproduced WaterWise Baseline Results on Local Host (1,440 Steps, Seed 40--42)}
+\label{tab:ww_repro}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+\textbf{Trace / Order} & \textbf{Optimizer (th)} & \textbf{Jobs} & \textbf{Carbon} & \textbf{Water} & \textbf{Lat.\ (s)} & \textbf{Wall (s)} \\
+\midrule
+Borg (num.\ sort) & Base & 16,707 & 47,285.44 & 1,140.10 & 119.97 & 3.33 \\
+Borg (num.\ sort) & WaterWise (0.5) & 16,707 & 32,467.14 & 908.58 & 127.82 & 85.21 \\
+\midrule
+Borg (\texttt{listdir}) & Base (3 seeds) & 16,707 & 42,933.93 & 1,059.42 & 110.13 & 3.00 \\
+Borg (\texttt{listdir}) & WaterWise (0.25) & 16,707 & 33,113.09 & 894.28 & 113.80 & 81.95 \\
+Borg (\texttt{listdir}) & WaterWise (0.5, 3s) & 16,707 & 30,140.49 & 843.32 & 118.74 & 82.71 \\
+Borg (\texttt{listdir}) & WaterWise (0.75) & 16,707 & 29,060.21 & 834.00 & 120.51 & 94.97 \\
+Borg (\texttt{listdir}) & WaterWise (1.0) & 16,707 & 28,084.20 & 826.64 & 121.59 & 92.57 \\
+Borg (\texttt{listdir}) & Carbon-Only (0.5) & 16,707 & 28,298.25 & 909.17 & 123.86 & 6.27 \\
+Borg (\texttt{listdir}) & Water-Only (0.5) & 16,707 & 31,611.83 & 795.74 & 124.27 & 4.89 \\
+\midrule
+Alibaba (\texttt{listdir}) & Base (3 seeds) & 15,134 & 40,790.65 & 1,120.99 & 4,558.16 & 35.93 \\
+Alibaba (\texttt{listdir}) & WaterWise (0.5, 3s) & 14,855 & 35,736.54 & 1,047.96 & 4,590.75 & 137.60 \\
+Alibaba (\texttt{listdir}) & Carbon-Only (0.5) & 12,562 & 41,076.79 & 1,146.62 & 4,396.04 & 598.12 \\
+Alibaba (\texttt{listdir}) & Water-Only (0.5) & 12,569 & 41,118.53 & 1,147.73 & 4,393.56 & 571.31 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\textbf{Narrowed research question.} Under matched workload, site capacity, policy filter, and random seed, does a five-minute forecast of queue delay, carbon intensity, and water intensity reduce modeled carbon and water per completed GPU-inference request relative to current-state scheduling, while meeting a predeclared p95 latency SLO and placing no request at a policy-ineligible site?
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{results/figures/fig1_waterwise_baseline.pdf}
+\caption{Measured WaterWise reproduction: (a) Borg delay-tolerance sweep showing carbon--water reduction vs.\ threshold, and (b) multi-seed carbon per job on Borg and Alibaba traces.}
+\label{fig:ww_baseline}
+\end{figure}
 
-The falsifiable expectation is that lookahead may help when conditions change predictably, but will provide little or no benefit when forecasts are uninformative. A result that lowers footprint while violating the latency SLO or a hard policy is a failure against this question. The policy labels and SLOs attached to public traces must be identified as synthetic unless independently sourced.
+Three empirical gaps emerge from Table~\ref{tab:ww_repro}. First, on Borg, \texttt{carbon\_opt} reduces carbon to 28,298.25 but increases water to 909.17, whereas \texttt{water\_opt} cuts water to 795.74 at 31,611.83 carbon, confirming the objective conflict. Second, on the heavier Alibaba trace, single-objective LP schedulers drop completions from 15,134 to 12,562--12,569 jobs and take 571--598~s to solve, exposing vulnerability to queue backlog. Third, WaterWise lacks hard residency, TEE attestation, drought, and audit mechanisms. This leads to our narrowed research question: \textit{under matched arrivals, capacities, and hard policy invariants, how much carbon, water, and compliance benefit does EcoTrust-DT deliver, and when does a short-horizon Digital Twin lookahead improve over current-telemetry policy scheduling?}
 
-%==============================================================
-\section{Proposed EcoTrust-DT Methodology}
-The proposed contribution is deliberately narrower than the full vision. EcoTrust-DT is implemented as a policy-safe, one-step-ahead placement policy for latency-bounded GPU inference under forecast uncertainty. It preserves hard residency, security, and SLO eligibility as a non-negotiable filter and, among eligible sites, compares (1)~current-telemetry scheduling with (2)~a lightweight digital-twin lookahead that predicts queue delay and environmental intensity over a fixed short horizon. The framework is divided into interconnected components, shown in Fig.~\ref{fig:arch}.
+%======================================================================
+\section{Proposed EcoTrust-DT Framework}
+\label{sec:methodology}
+
+Fig.~\ref{fig:arch} illustrates the EcoTrust-DT pipeline. Every incoming AI-agent request passes sequentially through a hard policy filter, a synchronized Digital Twin state estimator, a normalized multi-objective scorer, and a hash-chained audit logger.
 
 \begin{figure}[!t]
 \centering
 \begin{tikzpicture}[
-  box/.style={draw, rounded corners=2pt, align=center, text width=0.72\columnwidth, minimum height=0.75cm, font=\footnotesize},
-  arr/.style={-{Latex[length=2mm]}, thick},
-  node distance=0.5cm]
-\node[box] (a) {AI request: GPU demand, SLO, data class};
-\node[box, below=of a] (b) {Policy filter: residency, security, latency, water stress};
-\node[box, below=of b] (c) {Digital twin: forecast queue, carbon, water, availability};
-\node[box, below=of c] (d) {Multi-objective scorer: normalized EcoScore};
-\node[box, below=of d] (e) {Selected cloud/edge GPU site};
-\node[box, below=of e] (f) {Outcome feedback + hash-chained audit};
+  box/.style={draw, rounded corners=2pt, align=center, text width=0.80\columnwidth, minimum height=0.62cm, font=\footnotesize},
+  arr/.style={-{Latex[length=1.8mm]}, thick},
+  node distance=0.35cm]
+\node[box] (a) {AI-Agent Request $r$: GPU mem, SLO, data class, residency};
+\node[box, below=of a] (b) {Hard Policy Filter $F(i,r)$: residency, TEE, drought, outage, SLO};
+\node[box, below=of b] (c) {Lightweight Digital Twin: state sync $S_i(t)$ + horizon forecast $\hat{y}_i(t+\Delta t)$};
+\node[box, below=of c] (d) {Multi-Objective Scorer: min-max normalized $\mathrm{EcoScore}(i,r)$};
+\node[box, below=of d] (e) {Dispatch to $i^* \in S(r)$ \& observe actual $(C, W, L, Q)$};
+\node[box, below=of e] (f) {Twin MAE Feedback + SHA-256 Hash-Chained Audit Log};
 \draw[arr] (a) -- (b);
 \draw[arr] (b) -- (c);
 \draw[arr] (c) -- (d);
 \draw[arr] (d) -- (e);
 \draw[arr] (e) -- (f);
-\draw[arr, dashed] (f.east) -- ++(0.4,0) |- node[pos=0.25, right, font=\scriptsize]{feedback} (c.east);
+\draw[arr, dashed] (f.east) -- ++(0.32,0) |- node[pos=0.25, right, font=\scriptsize]{MAE} (c.east);
 \end{tikzpicture}
-\caption{Narrowed EcoTrust-DT architecture. The diagram integrates baseline scheduling with policy filtering, predictive digital-twin feedback, and audit logging.}
+\caption{EcoTrust-DT scheduling and governance architecture.}
 \label{fig:arch}
 \end{figure}
 
-\subsection{AI-Agent Workload Model}
-Each request is modeled as an AI-agent workflow with: arrival time; GPU-memory/GPU requirement; estimated service time (execution time); maximum acceptable latency or deadline (SLO); data class (public, internal, confidential, or restricted; synthetic in the evaluation); approved cloud providers and geographical regions; budget preference; carbon and water preference; and an optional confidential-computing or attestation requirement. Request contents are kept out of logs.
+\subsection{Workload and Federated Infrastructure Model}
+Each AI-agent request $r$ is characterized by arrival time $t_r$, source jurisdiction, workload type (interactive \texttt{llm\_inference} or \texttt{agent\_batch\_rag}), required GPU memory $m_r$, modeled energy $E_r$ (kWh), service duration $T_r$ (s), latency deadline $\mathrm{SLO}_r$, data classification $d_r \in \{\text{public}, \text{internal}, \text{confidential}, \text{restricted}\}$, approved regions $R_r$, attestation requirement $\tau_r \in \{0,1\}$, and objective weights $(\alpha,\beta,\gamma,\delta,\epsilon,\zeta)$ summing to unity.
 
-\subsection{Cloud--Edge Infrastructure Model}
-A simulated federated environment is built using the WaterWise simulator for the reproduced baseline and CloudSim Plus or a comparable simulator if a richer federation model is required \cite{ref12}. It will include 3--6 cloud regions and several edge nodes with different GPU types, GPU memory, and available capacity; queue length and utilization; network latency to users; electricity/GPU cost; grid carbon intensity in gCO$_2$e/kWh; water-consumption factor in liters/kWh or liters/request; reliability and outage probability; and security capability, including confidential-computing support and attestation. The implementation distinguishes measured values, assumed values, and synthetic annotations.
-
-\subsection{Environmental Telemetry and Site State}
-The system collects or simulates dynamic information for each candidate site: carbon intensity, water-use intensity, electricity or GPU price, GPU availability, queue delay, network latency, drought or water-stress status, security and privacy capability, and availability or outage status.
+The federated testbed models eight heterogeneous sites across three jurisdictions (\texttt{eu}, \texttt{us}, \texttt{apac}): five cloud sites (\texttt{zurich-cloud}, \texttt{madrid-cloud}, \texttt{milan-cloud}, \texttt{oregon-cloud}, \texttt{mumbai-cloud}) and three low-latency edge sites (\texttt{zurich-edge}, \texttt{oregon-edge}, \texttt{mumbai-edge}), totaling 76 GPU slots. Cloud sites carry 48--80~GB GPU memory and PUE values of 1.15--1.28; edge sites carry 24~GB GPUs with lower user RTT (8~ms in-region vs.\ 25~ms for cloud). Crucially, \texttt{milan-cloud}, \texttt{mumbai-cloud}, and \texttt{mumbai-edge} lack confidential-computing attestation, creating realistic governance constraints.
 
 \subsection{Hard Policy Filter}
-The policy engine applies hard constraints before optimization, removing locations that are not allowed. Example policies: restricted data must run only in approved regions and providers; confidential workloads must run on attested or confidential-computing-capable resources; a workload must not be moved to a low-carbon site if predicted latency exceeds its SLO; high-water-use sites must be blocked if a drought or water-stress threshold is exceeded; and sensitive prompts or document contents must never be sent to an unapproved site. For request $r$ and site $i$, feasibility is
+Before any optimization occurs, \texttt{HardPolicyFilter} computes site eligibility $F(i,r) \in \{0,1\}$:
 \begin{equation}
 \begin{split}
-F(i,r) = {} & \mathrm{Residency}(i,r) \wedge \mathrm{Security}(i,r) \wedge \mathrm{Latency}(i,r) \\
-& \wedge \mathrm{WaterPolicy}(i,r) \wedge \mathrm{Available}(i),
+F(i,r) = {} & \mathrm{Avail}(i) \wedge \mathrm{Mem}(i,r) \wedge \mathrm{Residency}(i,r) \\
+& \wedge \mathrm{Security}(i,r) \wedge \mathrm{Drought}(i) \wedge \mathrm{SLO}(i,r).
 \end{split}
 \end{equation}
-and the feasible site set is
-\begin{equation}
-S(r) = \{\, i \mid F(i,r) = 1 \,\}.
-\end{equation}
-Only sites in $S(r)$ may be scored, so a low environmental score can never override a privacy, legal, security, or data-residency requirement. The filter is tested as an invariant: a prohibited site can never win regardless of objective weights.
+Here $\mathrm{Residency}(i,r)$ checks that site $i$'s jurisdiction belongs to $R_r$; $\mathrm{Security}(i,r)$ requires hardware attestation whenever $\tau_r=1$ or $d_r \in \{\text{confidential}, \text{restricted}\}$; $\mathrm{Drought}(i)$ blocks water-stressed regions; and $\mathrm{SLO}(i,r)$ checks whether predicted network RTT plus queue wait plus $T_r$ fits within $\mathrm{SLO}_r$. If the feasible set $S(r)=\{i \mid F(i,r)=1\}$ is empty under the latency check, only the SLO filter is relaxed; non-negotiable residency, security, availability, and drought invariants are never relaxed. Requests with zero legally eligible sites (e.g., confidential APAC requests when no APAC site supports attestation) are safely rejected rather than leaked.
 
-\subsection{Lightweight Digital Twin}
-The Digital Twin is a virtual replica of the real or simulated cloud--edge system, continuously synchronized with infrastructure and environmental telemetry. The minimum viable twin is a state snapshot plus a short-horizon predictor. At time $t$, each site state is
+\subsection{Lightweight Digital Twin and Multi-Objective Scorer}
+At each one-minute step, the Digital Twin synchronizes a sliding 15-step state snapshot $S_i(t)$ of carbon intensity, water intensity, queue wait, electricity price, and outage EMA. Over a $\Delta t = 5$-minute horizon, it estimates near-future carbon, water, and queue delay using damped exponential smoothing ($\alpha_{\mathrm{ema}}=0.40$, trend $\beta_{\mathrm{tr}}=0.25$):
 \begin{equation}
-\begin{split}
-S_i(t) = [\,&\mathrm{GPU}_i, \mathrm{Queue}_i, \mathrm{Latency}_i, \mathrm{Carbon}_i, \\
-&\mathrm{Water}_i, \mathrm{Price}_i, \mathrm{Availability}_i, \mathrm{Security}_i\,].
-\end{split}
+\hat{y}_i(t+\Delta t) = 0.65\,y_i(t) + 0.35\,\bar{y}_i(t) + \beta_{\mathrm{tr}}\,\hat{s}_i(t)\min(3,\Delta t),
 \end{equation}
-The twin predicts the state at a near-future decision window $t+\Delta t$ and evaluates feasible placements (\textit{what-if} simulation) before committing a decision. After execution, actual outcomes are returned to the twin, which compares forecasts with real results and updates its estimation model. The initial predictor is intentionally transparent, such as a moving average or exponential smoother, rather than a deep learning model, which supports interpretability and makes forecast error easier to isolate. Prediction quality is measured by the mean absolute error
-\begin{equation}
-\mathrm{MAE} = \frac{1}{N}\sum_{k=1}^{N} \left| y_k - \hat{y}_k \right|.
-\end{equation}
-The project reports update cadence, prediction horizon, features, forecast errors, and what-if logic; a digital twin is not claimed merely by adding a weighted score.
+where $\bar{y}_i(t)$ is the EMA anchor and $\hat{s}_i(t)$ is the recent slope. Upon job completion, the twin records $|\,y_{\mathrm{actual}} - \hat{y}\,|$ to maintain live MAE metrics.
 
-\subsection{Multi-Objective Decision Score}
-For every feasible site, the digital twin estimates predicted carbon, water, latency, cost, queue delay, and risk. The decision score is
+Across all $i \in S(r)$, each candidate objective---predicted carbon $\hat{C}_{i,r}$, water $\hat{W}_{i,r}$, end-to-end latency $\hat{L}_{i,r}$, cost $\hat{P}_{i,r}$, queue wait $\hat{Q}_{i,r}$, and saturation/outage risk $\hat{R}_{i,r}$---is min-max normalized over $S(r)$ and combined into:
 \begin{equation}
-\mathrm{EcoScore}(i,r) = \alpha \hat{C}_{i,r} + \beta \hat{W}_{i,r} + \gamma \hat{L}_{i,r} + \delta \hat{P}_{i,r} + \epsilon \hat{Q}_{i,r} + \zeta \hat{R}_{i,r},
+\mathrm{EcoScore}(i,r) = \alpha \tilde{C}_{i,r} + \beta \tilde{W}_{i,r} + \gamma \tilde{L}_{i,r} + \delta \tilde{P}_{i,r} + \epsilon \tilde{Q}_{i,r} + \zeta \tilde{R}_{i,r}.
 \end{equation}
-where all terms are normalized and
-\begin{equation}
-\alpha + \beta + \gamma + \delta + \epsilon + \zeta = 1.
-\end{equation}
-The selected site is
-\begin{equation}
-i^{*} = \arg\min_{i \in S(r)} \mathrm{EcoScore}(i,r).
-\end{equation}
-Weights reflect workload priorities: a confidential, real-time healthcare or banking request uses higher weights for latency and risk; a flexible batch AI task uses higher weights for carbon, water, and cost; a public request can prioritize affordability and performance while still observing sustainability targets. The project reports per-metric outcomes as well as the composite score and includes a sensitivity analysis over weights. A Pareto summary or constraint-based formulation is preferred when a single weighted score risks hiding trade-offs.
+Interactive LLM inference uses $(0.28,0.28,0.18,0.06,0.14,0.06)$, whereas batch RAG jobs use $(0.35,0.35,0.05,0.10,0.10,0.05)$. Algorithm~\ref{alg:ecotrust} summarizes the placement loop.
 
 \begin{algorithm}[!t]
-\caption{Policy-safe one-step-ahead placement}
-\label{alg:placement}
+\caption{EcoTrust-DT Policy-Safe Placement}
+\label{alg:ecotrust}
 \begin{algorithmic}[1]
-\REQUIRE request $r$, current site state $S(t)$, forecast horizon $\Delta t$, weights $\theta$
-\ENSURE placement decision and audit record
-\STATE $S(r) \leftarrow \{i : F(i,r)=1\}$ \COMMENT{hard policy filter}
-\IF{$S(r)=\emptyset$}
-  \STATE queue or reject request; record reason
-\ELSE
-  \FOR{$i \in S(r)$}
-    \STATE predict $\hat{q}_i, \hat{\ell}_i, \hat{c}_i, \hat{w}_i$ using digital twin
-    \STATE compute normalized score $\mathrm{EcoScore}(i,r)$
-  \ENDFOR
-  \STATE $i^{*} \leftarrow \arg\min_{i \in S(r)} \mathrm{EcoScore}(i,r)$
-  \STATE dispatch request to $i^{*}$
-  \STATE observe actual outcome
-  \STATE update twin and append hash-chained audit record
+\REQUIRE Request $r$, site states $\{S_i(t)\}$, Digital Twin $\mathcal{T}$
+\ENSURE Selected site $i^*$ and hash-chained audit entry
+\STATE Predict $\hat{q}_i, \hat{c}_i, \hat{w}_i, \hat{p}_i, \hat{r}_i \leftarrow \mathcal{T}.\text{predict}(i, t)$ for all sites
+\STATE $S(r) \leftarrow \text{HardPolicyFilter}(r, \{S_i(t)\}, \{\hat{q}_i\}, \text{slo}=\text{True})$
+\IF{$S(r) = \emptyset$}
+  \STATE $S(r) \leftarrow \text{HardPolicyFilter}(r, \{S_i(t)\}, \{\hat{q}_i\}, \text{slo}=\text{False})$
 \ENDIF
+\IF{$S(r) = \emptyset$}
+  \STATE Reject $r$ safely; append audit entry; \textbf{return} $\emptyset$
+\ENDIF
+\STATE Compute min-max normalized $\mathrm{EcoScore}(i,r)$ for $i \in S(r)$
+\STATE $i^* \leftarrow \arg\min_{i \in S(r)} \mathrm{EcoScore}(i,r)$
+\STATE Reserve GPU slot on $i^*$; observe actual $(C, W, L, Q)$
+\STATE $\mathcal{T}.\text{record\_feedback}(\cdot)$; append SHA-256 audit entry
 \end{algorithmic}
 \end{algorithm}
 
-\subsection{Verifiable Audit Layer}
-EcoTrust-DT creates a tamper-evident audit record for every decision. It is a small governance component, not a separate distributed-ledger contribution. Each record contains pseudonymous metadata: a privacy-preserving request identifier, workload data classification, policies checked, feasible sites after policy filtering, Digital-Twin predictions for candidate sites, selected site and decision reason, predicted and actual carbon/water/latency/cost values, SLO result, and rerouting or failure-recovery events. Records are hash-chained to detect later modification. The audit layer stores metadata and hashes rather than raw user prompts or sensitive retrieved documents.
+\subsection{SHA-256 Hash-Chained Audit Layer}
+Every placement or rejection generates a pseudonymous \texttt{AuditEntry} containing a 16-character SHA-256 request digest (no raw prompt or document text), data class, feasible site list, rejected site count, selected site, SLO outcome, policy-violation flag, predicted/actual carbon and water, and \texttt{prev\_hash}. Canonical JSON serialization is hashed with SHA-256 to form \texttt{record\_hash}, enabling deterministic chain verification via \texttt{verify\_chain()}.
 
-%==============================================================
-\section{Experimental Design and Evaluation Protocol}
+%======================================================================
+\section{Experimental Setup}
+\label{sec:setup}
 
-\subsection{Paired Policy Arms}
-The experiments keep workload arrivals, site capacities, carbon/water time series, policy labels, seeds, and all non-tested settings fixed across paired policy runs. This isolation is necessary because introducing many components simultaneously would make it difficult to determine which component caused any observed improvement. The minimum arms are listed in Table~\ref{table:arms}; they include FIFO/round-robin, carbon-only, water-only, policy-aware current-telemetry scheduling without a Digital Twin, and EcoTrust-DT. The conventional lowest-cost and lowest-latency schedulers are included as additional baselines in the full study.
-
-\begin{table*}[!t]
-\caption{Minimum Experimental Arms for Isolating the Contribution of Policy Filtering and Digital-Twin Lookahead}
-\label{table:arms}
-\centering
-\footnotesize
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular}{|p{1.0cm}|p{7.6cm}|p{7.8cm}|}
-\hline
-\textbf{Arm} & \textbf{Policy} & \textbf{Purpose} \\ \hline
-A0 & WaterWise original configuration & Reproduced reference; retained unchanged \\ \hline
-A1 & FIFO / round robin & Simple non-sustainability sanity baseline \\ \hline
-A2 & Current-state carbon + water + latency score with hard policy filtering & Main fair comparator without lookahead \\ \hline
-A3 & A2 plus forecast/lookahead digital twin & Proposed treatment; isolates predictive contribution \\ \hline
-A4 & A3 with prediction disabled, stale, or error-injected & Ablation and forecast-value test \\ \hline
-A5 & Carbon-only and water-only variants & Shows objective trade-off \\ \hline
-\end{tabular}
-\end{table*}
-
-\subsection{Workloads and Scenarios}
-\textbf{Workload conditions:} low, medium, and high request rates; public, internal, confidential, and restricted requests; short real-time inference and longer batch jobs; different latency SLOs and GPU requirements. \textbf{Stress conditions:} bursty arrivals, carbon-intensity spikes or shifts, drought or water-stress restrictions, GPU shortages, queue congestion, electricity-price surges, network degradation, forecast staleness/error, regional cloud or edge-node outages, and sudden AI-agent workload bursts. The narrowed study prioritizes bursts, forecast/queue errors, water/carbon changes, policy exclusions, and one outage case. Synthetic policy classes are explicitly labeled as simulated assumptions.
-
-\subsection{Metrics and Hypothesized Outcomes}
-The evaluation measures success across several dimensions. The metrics and the hypothesized (not yet observed) outcomes are given in Table~\ref{table:metrics}, and the reporting rules for primary and guardrail metrics are given in Table~\ref{table:primary}.
-
-\begin{table}[H]
-\caption{Evaluation Dimensions and Hypothesized Outcomes}
-\label{table:metrics}
-\centering
-\renewcommand{\arraystretch}{1.1}
-\resizebox{\columnwidth}{!}{%
-\begin{tabular}{|p{2.0cm}|p{3.5cm}|p{5.5cm}|}
-\hline
-\textbf{Dimension} & \textbf{Metric} & \textbf{Hypothesized Outcome} \\ \hline
-Sustainability & CO$_2$e per 1,000 requests & Lower carbon impact than FIFO, cost-only, and latency-only baselines \\ \hline
-Sustainability & Liters of water per 1,000 requests & Lower freshwater impact without merely shifting harm from carbon to water \\ \hline
-Performance & p95 end-to-end latency & Remains within defined SLO targets for real-time workloads \\ \hline
-Reliability & SLO-miss rate & Low miss rate, including during stress conditions \\ \hline
-Business & Cost per 1,000 requests & Competitive cost compared with performance-only scheduling \\ \hline
-Trust & Policy-violation rate & Zero by construction, since policies filter sites before optimization \\ \hline
-Auditability & Percentage of complete, verifiable audit records & High audit coverage for every placement decision \\ \hline
-Resilience & Recovery time after outage & Faster rerouting and recovery than non-predictive baselines \\ \hline
-Digital Twin & Carbon prediction error & Decreases as the Digital Twin receives execution feedback \\ \hline
-Digital Twin & Water prediction error & Decreases as water and workload estimates are refined \\ \hline
-Digital Twin & Latency prediction error & Lower error than simple current-state estimates \\ \hline
-Digital Twin & Best-site selection accuracy & Higher rate of selecting the best feasible site \\ \hline
-Digital Twin & Adaptation time & Quick reaction to outages, queues, carbon spikes, price changes, and drought restrictions \\ \hline
-Digital Twin & Scheduling overhead & Low enough to remain practical for real-time decisions \\ \hline
-\end{tabular}%
-}
-\end{table}
-
-\begin{table*}[!t]
-\caption{Primary and Guardrail Metrics for the EcoTrust-DT Evaluation}
-\label{table:primary}
-\centering
-\footnotesize
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular}{|p{2.4cm}|p{6.2cm}|p{8.0cm}|}
-\hline
-\textbf{Metric group} & \textbf{Metric} & \textbf{Reporting rule} \\ \hline
-Sustainability & Carbon per completed request; water per completed request & Report run-level means and uncertainty across independent seeds \\ \hline
-Performance & p50/p95/p99 end-to-end latency; SLO attainment/violations & Tail latency is a guardrail, not a tradeable weighted objective \\ \hline
-Reliability & Throughput; rejected/queued requests; recovery time after outage & Report under normal and stress scenarios \\ \hline
-Policy & Policy-violation count & Must be zero by construction, with automated tests \\ \hline
-Efficiency & Scheduler decision overhead; GPU utilization & Report decision time and resource use \\ \hline
-Twin quality & Predictor MAE for queue delay and carbon/water input & Report forecast error and staleness effects \\ \hline
-Accounting & Energy/water-accounting assumptions & Disclose model factors and missing region-level observability \\ \hline
-\end{tabular}
-\end{table*}
-
-\subsection{Interpretation Rules}
-The study pre-registers the direction of the hypothesis, not the result. The expected direction is that forecastable, changing conditions may reduce carbon and water per completed request relative to current-state scheduling, while little or no benefit is expected when forecasts are uninformative. Latency-SLO failures and policy violations are guardrails. The following rules are used.
+\subsection{Paired Arms and Scenarios}
+We evaluate seven paired experimental arms under identical arrival streams, random seeds ($40$--$44$), site capacities, and real WaterWise regional carbon/water telemetry (1,440 one-minute steps per run, 70 total runs):
 \begin{itemize}[leftmargin=*]
-    \item If the lookahead arm improves environmental metrics but breaks p95 latency or policy invariants, it fails the stated goal.
-    \item If the lookahead and current-state policy arms are statistically indistinguishable, the tested predictor adds no demonstrated value in the tested regime.
-    \item If gains occur only with oracle-quality forecasts, the required forecast accuracy is quantified.
-    \item Carbon and water numbers are reported as estimates tied to the disclosed energy model and water-intensity source, not as direct physical measurements unless measured instrumentation is used.
+    \item \textbf{A1 (\texttt{A1\_round\_robin}):} Policy-unaware round-robin baseline across available sites.
+    \item \textbf{A2 (\texttt{A2\_current\_policy}):} Hard policy filter plus current-telemetry \texttt{EcoScore} (lookahead disabled).
+    \item \textbf{A3 (\texttt{A3\_ecotrust\_dt}):} Full EcoTrust-DT with 5-minute Digital-Twin lookahead and MAE feedback.
+    \item \textbf{A4 (\texttt{A4\_stale\_dt}, \texttt{A4\_noisy\_dt}):} Twin ablations using 10-step stale telemetry or 25\% Gaussian forecast noise.
+    \item \textbf{A5 (\texttt{A5\_carbon\_only}, \texttt{A5\_water\_only}):} Policy-filtered single-objective variants isolating the carbon--water trade-off.
 \end{itemize}
 
-%==============================================================
-\section{Limitations and Next Steps}
-Several limitations must be stated explicitly.
-\begin{enumerate}
-    \item \textbf{Pilot versus full reproduction.} The reported run is a one-day, one-seed, corrected-order diagnostic pilot. It does not reproduce the full WaterWise evaluation and should not be presented as exact replication.
-    \item \textbf{Hardware and solver differences.} The host has one visible logical CPU and 1.5~GiB RAM, and the optimizer used PuLP/CBC rather than the GLPK solver described in the paper. These differences affect runtime and may affect optimization paths.
-    \item \textbf{Undocumented input mapping.} The default trace reader uses unsorted directory enumeration and positional workload labels. The numeric-order correction makes the pilot internally consistent, but the artifact does not document the intended app-to-label mapping.
-    \item \textbf{Modeled environmental values.} Energy-to-carbon and energy-to-water calculations are modeled estimates tied to disclosed factors and intensity sources, not direct physical measurements unless instrumented testbeds are used.
-    \item \textbf{Synthetic privacy labels.} Neither the Alibaba nor the Google cluster traces contain confidential prompts/documents, legal residency labels, or true SLO classes needed to establish privacy compliance. These attributes are synthetic annotations and must not be presented as observed trace properties.
-    \item \textbf{Simulation scope.} EcoTrust-DT is initially a simulation-based research prototype. Confidential computing is modeled as a site-eligibility capability unless actual attestation hardware is tested.
-    \item \textbf{Novelty risk.} The gap is a candidate gap, not a proven absence. Close prior art includes WaterWise, EcoKube, digital-twin edge scheduling, and carbon/water-aware LLM scheduling. The final novelty claim must be refined with the supervisor after a focused related-work and artifact check.
+In the \textbf{Normal} scenario (12,558 requests per run), arrivals follow the numerically sorted Borg trace scaled by $0.75\times$. In the \textbf{Stress} scenario (15,430 requests per run), we inject two $2.2\times$ arrival bursts (steps 300--450 and 900--1,050), a $2.4\times$ carbon spike in Zurich (steps 400--600), a drought restriction in Madrid (steps 500--800), a 60-minute outage at \texttt{oregon-cloud} (steps 700--760), and a $1.5\times$ EU price surge (steps 900--1,100). Privacy classes (35\% public, 30\% internal, 25\% confidential, 10\% restricted) and SLO deadlines (10--25~s for LLM inference; 60--120~s for batch RAG) are explicitly labeled as synthetic annotations layered onto the real arrival and environmental traces.
+
+%======================================================================
+\section{Results and Discussion}
+\label{sec:results}
+
+Table~\ref{tab:ecotrust_results} summarizes the five-seed means and standard deviations across all seven arms in both scenarios, while Fig.~\ref{fig:pareto} and Fig.~\ref{fig:policy_overhead} visualize the carbon--water Pareto frontier, policy enforcement, and decision overhead.
+
+\begin{table*}[!t]
+\caption{Paired EcoTrust-DT Results Across 5 Seeds (Mean $\pm$ Std, Normal = 12,558 Requests, Stress = 15,430 Requests)}
+\label{tab:ecotrust_results}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}llccccccc@{}}
+\toprule
+\textbf{Scenario} & \textbf{Arm} & \textbf{Completed} & \textbf{Carbon / 1k} & \textbf{Water / 1k} & \textbf{p95 Lat.\ (s)} & \textbf{SLO (\%)} & \textbf{Policy Viol.} & \textbf{Dec.\ (ms)} \\
+\midrule
+Normal & A1\_round\_robin & 12,558.0 $\pm$ 0.0 & 534.25 $\pm$ 5.77 & 35.85 $\pm$ 0.30 & 30.41 $\pm$ 0.28 & 100.00 $\pm$ 0.00 & 4,866.6 $\pm$ 54.27 & 0.026 $\pm$ 0.000 \\
+Normal & A2\_current\_policy & 11,662.4 $\pm$ 21.96 & 137.37 $\pm$ 1.20 & 28.44 $\pm$ 0.26 & 30.36 $\pm$ 0.31 & 92.87 $\pm$ 0.18 & 0.0 $\pm$ 0.0 & 0.068 $\pm$ 0.003 \\
+Normal & \textbf{A3\_ecotrust\_dt} & 11,662.4 $\pm$ 21.96 & \textbf{137.34 $\pm$ 1.22} & \textbf{28.44 $\pm$ 0.26} & 30.36 $\pm$ 0.31 & 92.87 $\pm$ 0.18 & \textbf{0.0 $\pm$ 0.0} & 0.086 $\pm$ 0.002 \\
+Normal & A4\_stale\_dt & 11,662.4 $\pm$ 21.96 & 138.04 $\pm$ 1.00 & 28.46 $\pm$ 0.26 & 30.36 $\pm$ 0.31 & 92.87 $\pm$ 0.18 & 0.0 $\pm$ 0.0 & 0.070 $\pm$ 0.001 \\
+Normal & A4\_noisy\_dt & 11,662.4 $\pm$ 21.96 & 122.64 $\pm$ 1.13 & 30.37 $\pm$ 0.28 & 30.36 $\pm$ 0.30 & 92.87 $\pm$ 0.18 & 0.0 $\pm$ 0.0 & 0.083 $\pm$ 0.004 \\
+Normal & A5\_carbon\_only & 11,662.4 $\pm$ 21.96 & 48.90 $\pm$ 0.37 & 30.62 $\pm$ 0.27 & 30.36 $\pm$ 0.31 & 92.87 $\pm$ 0.18 & 0.0 $\pm$ 0.0 & 0.066 $\pm$ 0.002 \\
+Normal & A5\_water\_only & 11,662.4 $\pm$ 21.96 & 184.65 $\pm$ 1.54 & 26.76 $\pm$ 0.24 & 30.38 $\pm$ 0.31 & 92.87 $\pm$ 0.18 & 0.0 $\pm$ 0.0 & 0.065 $\pm$ 0.000 \\
+\midrule
+Stress & A1\_round\_robin & 15,430.0 $\pm$ 0.0 & 536.64 $\pm$ 7.35 & 35.94 $\pm$ 0.28 & 30.45 $\pm$ 0.29 & 100.00 $\pm$ 0.00 & 6,256.8 $\pm$ 53.48 & 0.026 $\pm$ 0.001 \\
+Stress & A2\_current\_policy & 14,326.4 $\pm$ 20.26 & 134.52 $\pm$ 1.62 & 28.57 $\pm$ 0.25 & 30.38 $\pm$ 0.30 & 92.85 $\pm$ 0.13 & 0.0 $\pm$ 0.0 & 0.066 $\pm$ 0.002 \\
+Stress & \textbf{A3\_ecotrust\_dt} & 14,326.4 $\pm$ 20.26 & \textbf{134.54 $\pm$ 1.63} & \textbf{28.57 $\pm$ 0.25} & 30.38 $\pm$ 0.30 & 92.85 $\pm$ 0.13 & \textbf{0.0 $\pm$ 0.0} & 0.086 $\pm$ 0.002 \\
+Stress & A4\_stale\_dt & 14,326.4 $\pm$ 20.26 & 134.71 $\pm$ 1.56 & 28.57 $\pm$ 0.26 & 30.38 $\pm$ 0.30 & 92.85 $\pm$ 0.13 & 0.0 $\pm$ 0.0 & 0.069 $\pm$ 0.001 \\
+Stress & A4\_noisy\_dt & 14,326.4 $\pm$ 20.26 & 122.18 $\pm$ 1.44 & 30.43 $\pm$ 0.31 & 30.38 $\pm$ 0.31 & 92.85 $\pm$ 0.13 & 0.0 $\pm$ 0.0 & 0.082 $\pm$ 0.001 \\
+Stress & A5\_carbon\_only & 14,326.4 $\pm$ 20.26 & 50.38 $\pm$ 0.42 & 30.48 $\pm$ 0.28 & 30.39 $\pm$ 0.30 & 92.85 $\pm$ 0.13 & 0.0 $\pm$ 0.0 & 0.066 $\pm$ 0.002 \\
+Stress & A5\_water\_only & 14,326.4 $\pm$ 20.26 & 185.14 $\pm$ 1.54 & 26.98 $\pm$ 0.25 & 30.40 $\pm$ 0.31 & 92.85 $\pm$ 0.13 & 0.0 $\pm$ 0.0 & 0.066 $\pm$ 0.002 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{results/figures/fig2_ecotrust_pareto.pdf}
+\caption{EcoTrust-DT sustainability performance: (a) policy-safe carbon--water trade-off across A2--A5, and (b) carbon per 1,000 requests under Normal and Stress scenarios.}
+\label{fig:pareto}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{results/figures/fig3_policy_and_overhead.pdf}
+\caption{Governance and runtime overhead: (a) hard policy enforcement reduces violations to zero across A2--A5, and (b) mean per-request scheduling time remains under 0.09~ms.}
+\label{fig:policy_overhead}
+\end{figure}
+
+\subsection{Hard Policy Compliance and Auditability}
+Without policy filtering, \texttt{A1\_round\_robin} achieves 100\% apparent SLO attainment only by violating residency, attestation, or drought rules on $4,866.6 \pm 54.27$ requests (38.75\%) in the Normal scenario and $6,256.8 \pm 53.48$ requests (40.55\%) under Stress. By contrast, all policy-enforced arms (\texttt{A2}--\texttt{A5}) record \textbf{0.0 policy violations} across all 70 runs. Crucially, the $895.6 \pm 21.96$ Normal rejections ($1,103.6 \pm 20.26$ under Stress) occur precisely on confidential and restricted APAC requests where neither \texttt{mumbai-cloud} nor \texttt{mumbai-edge} supports hardware attestation---demonstrating fail-closed privacy protection rather than silent leakage. Every decision across all runs passed \texttt{verify\_chain()} with 100\% SHA-256 integrity, adding only $0.086 \pm 0.002$~ms per request in \texttt{A3\_ecotrust\_dt}.
+
+\subsection{Carbon--Water Co-Optimization}
+In the Normal regime, \texttt{A3\_ecotrust\_dt} cuts carbon per 1,000 completed requests from $534.25 \pm 5.77$ to $137.34 \pm 1.22$ ($-74.29\%$) and water from $35.85 \pm 0.30$ to $28.44 \pm 0.26$ ($-20.68\%$) relative to \texttt{A1\_round\_robin}, while keeping $p_{95}$ latency virtually unchanged ($30.36$~s vs.\ $30.41$~s). Under Stress, reductions remain virtually identical: $-74.93\%$ carbon ($536.64 \rightarrow 134.54$) and $-20.50\%$ water ($35.94 \rightarrow 28.57$). Comparing \texttt{A3\_ecotrust\_dt} against \texttt{A5} confirms the necessity of joint scoring: \texttt{A5\_carbon\_only} pushes carbon down to $48.90$ (Normal) but increases water to $30.62$ ($+7.67\%$ vs.\ \texttt{A3}), whereas \texttt{A5\_water\_only} lowers water to $26.76$ at the cost of $184.65$ carbon ($+34.45\%$ vs.\ \texttt{A3}).
+
+\subsection{Honest Lookahead and Noise Ablation}
+Comparing \texttt{A3\_ecotrust\_dt} ($137.34$ C, $28.44$ W) with \texttt{A2\_current\_policy} ($137.37$ C, $28.44$ W) yields a statistically indistinguishable difference in both Normal and Stress regimes. This negative lookahead finding is informative and directly reflects two physical properties of the trace: (1) WaterWise's regional CI and EWIF inputs are piecewise-constant over 60-minute blocks, so short-horizon trend extrapolation sees zero intra-hour slope, and (2) 76 federated GPU slots absorb the scaled arrival stream without sustained multi-minute queues ($\mathrm{MAE}_{\mathrm{queue}} = 0.0$~s). When 25\% forecast noise is injected (\texttt{A4\_noisy\_dt}), prediction error rises ($\mathrm{MAE}_{\mathrm{carbon}} = 0.0253$, $\mathrm{MAE}_{\mathrm{water}} = 0.0069$) and skews placement toward lower-carbon but higher-water sites ($30.37$ W Normal, $30.43$ W Stress). Under 10-step staleness (\texttt{A4\_stale\_dt}), carbon drifts slightly upward ($138.04$ vs.\ $137.34$). Thus, short-horizon lookahead only adds measurable value when sub-hourly telemetry volatility and queue saturation are both present.
+
+\subsection{Automated Invariant Verification}
+All three unit and invariant tests in \texttt{tests/test\_ecotrust\_dt.py} passed in $0.006$~s, confirming that (i) prohibited low-carbon sites are never selected regardless of objective weights, (ii) tampering with any field in an audit record is immediately detected by \texttt{verify\_chain()}, and (iii) all seven arm configurations execute deterministically.
+
+%======================================================================
+\section{Limitations and Threats to Validity}
+\label{sec:limitations}
+
+Several boundaries constrain the generalizability of this study:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Modeled Environmental Accounting:} Carbon and water totals rely on Electricity Maps and Meteologix factors bundled in WaterWise rather than physical power-meter or cooling-tower instrumentation.
+    \item \textbf{Synthetic Privacy and SLO Labels:} Public Borg and Alibaba traces lack prompt sensitivity classes, residency rules, and LLM SLOs; these were introduced as explicit synthetic annotations.
+    \item \textbf{Piecewise-Constant Telemetry:} Repeating hourly CI/EWIF values 60 times eliminates sub-hourly grid gradients, limiting the regime in which 5-minute lookahead can outperform current telemetry.
+    \item \textbf{Simulation Scope:} Hardware attestation is modeled as a boolean site capability rather than live remote attestation over physical CPU--GPU TEE enclaves.
 \end{enumerate}
-Before presenting EcoTrust-DT as a contribution, the team should: (1)~reproduce at least one complete official WaterWise result with the intended trace and threshold sweep; (2)~record artifact version, dataset provenance, checksums, exact commands, and all environment differences; (3)~validate the candidate gap against current related work, including sustainable LLM scheduling; (4)~implement the policy filter and forecast module as separately ablatable components; and (5)~run matched repeated experiments with disclosed synthetic assumptions. Any remaining difference from WaterWise's reported values should be explained, not tuned away.
 
-%==============================================================
-\section{Conclusion}
-This paper proposed EcoTrust-DT, a framework that moves cloud--edge scheduling from a reactive, single-objective paradigm toward a proactive, multi-objective, policy-enforced design, and presented a bounded reproduction of WaterWise used to narrow the research direction. The pilot showed that, on the first 1,440 minutes of the bundled Borg trace and under a deterministic numeric trace ordering, WaterWise reduced modeled carbon output by 31.34\% and modeled water output by 20.31\% relative to the home-region baseline, while increasing mean completion latency by 6.54\% and leaving p95 latency unchanged. Because the run used a constrained host, one seed, one delay threshold, a corrected trace order, and PuLP/CBC rather than the paper-described GLPK solver, these values are reported as a diagnostic pilot rather than a full reproduction.
+%======================================================================
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
 
-The reading notes identified concrete reproducibility issues: an undocumented app-to-label mapping, unsorted directory enumeration in the default loader, incomplete provenance for environmental series, and solver deviation. These issues prevent overclaiming and define the baseline that any EcoTrust-DT extension must respect.
+This paper presented a reproduction-first investigation and implementation of EcoTrust-DT for policy-enforced, carbon- and water-aware AI-agent scheduling. Reproducing 21 runs of the PPoPP~'25 WaterWise baseline on documented commodity hardware exposed a 9.6\% sensitivity to unsorted trace loading, a CBC-vs.-GLPK solver discrepancy, and queue-completion drops under single-objective LP contention. Building on these findings, EcoTrust-DT enforces residency, attestation, drought, and SLO policies before multi-objective scoring and logs pseudonymous decisions in a SHA-256 hash chain. Across 70 paired runs, EcoTrust-DT eliminated all 4,866.6--6,256.8 policy violations, reduced carbon by 74.29\%--74.93\% and water by 20.50\%--20.68\% per 1,000 requests at 0.086~ms per decision, and honestly demonstrated that 5-minute lookahead converges with current telemetry under piecewise-constant hourly inputs. Future work will evaluate sub-minute grid telemetry, saturated multi-GPU inference queues, and live TEE attestation.
 
-The EcoTrust-DT contribution was therefore narrowed to a testable question: whether a short-horizon digital-twin lookahead improves carbon and water outcomes over an otherwise identical current-telemetry, policy-aware scheduler for latency-bounded GPU inference, without violating hard residency, security, availability, or SLO constraints. The final research claim must be earned through controlled experiments, ablations, and honest deviation reporting. If the lookahead module improves environmental metrics while preserving latency and policy guardrails, the contribution is a validated extension. If it does not, the negative result is still valuable because it identifies the forecast accuracy and workload regimes required for digital-twin scheduling to matter.
-
-\section*{Acknowledgment}
-The authors thank the research supervisor for guidance on reproduction scope, gap validation, and experimental design.
-
-% References section - STRICTLY PLACED AT THE VERY END
+%======================================================================
 \begin{thebibliography}{99}
 
-\bibitem{ref1} H. Moore, S. Qi, N. Hogade, D. Milojicic, C. Bash, and S. Pasricha, ``Sustainable Carbon-Aware and Water-Efficient LLM Scheduling in Geo-Distributed Cloud Datacenters,'' in \textit{Proc. Great Lakes Symp. VLSI (GLSVLSI '25)}, 2025, pp. 929--934, doi: 10.1145/3716368.3735301.
+\bibitem{li2025thirsty} P. Li, J. Yang, M. A. Islam, and S. Ren, ``Making AI less `thirsty': Uncovering and addressing the secret water footprint of AI models,'' \textit{Commun. ACM}, 2025, doi: 10.1145/3724499.
 
-\bibitem{ref2} Y. Jiang, R. Basu Roy, R. Kanakagiri, and D. Tiwari, ``WaterWise: Co-optimizing Carbon- and Water-Footprint Toward Environmentally Sustainable Cloud Computing,'' in \textit{Proc. 30th ACM SIGPLAN Annual Symp. Principles and Practice of Parallel Programming (PPoPP '25)}, 2025, pp. 297--311, doi: 10.1145/3710848.3710891.
+\bibitem{moore2025llm} H. Moore, S. Qi, N. Hogade, D. Milojicic, C. Bash, and S. Pasricha, ``Sustainable carbon-aware and water-efficient LLM scheduling in geo-distributed cloud datacenters,'' in \textit{Proc. Great Lakes Symp. VLSI (GLSVLSI '25)}, 2025, pp. 929--934, doi: 10.1145/3716368.3735301.
 
-\bibitem{ref3} A. Souza, S. Jasoria, B. Chakrabarty, A. Bridgwater, A. Lundberg, F. Skogh, A. Ali-Eldin, D. Irwin, and P. Shenoy, ``CASPER: Carbon-Aware Scheduling and Provisioning for Distributed Web Services,'' in \textit{Proc. 14th Int. Green and Sustainable Computing Conf. (IGSC '23)}, Toronto, ON, Canada, 2023, doi: 10.1145/3634769.3634812.
+\bibitem{jiang2025waterwise} Y. Jiang, R. Basu Roy, R. Kanakagiri, and D. Tiwari, ``WaterWise: Co-optimizing carbon- and water-footprint toward environmentally sustainable cloud computing,'' in \textit{Proc. 30th ACM SIGPLAN Annu. Symp. Principles Pract. Parallel Program. (PPoPP '25)}, 2025, pp. 297--311, doi: 10.1145/3710848.3710891.
 
-\bibitem{ref4} Y. Zhang, W. Hua, Z. Zhou, G. E. Suh, and C. Delimitrou, ``Sinan: ML-Based and QoS-Aware Resource Management for Cloud Microservices,'' in \textit{Proc. 26th ACM Int. Conf. Architectural Support for Programming Languages and Operating Systems (ASPLOS '21)}, 2021, pp. 167--181, doi: 10.1145/3445814.3446693.
+\bibitem{liu2021wue} J. Liu, Y. Wang, and H. Chen, ``Water usage effectiveness in cloud data centers,'' \textit{IEEE Trans. Sustain. Comput.}, vol. 6, no. 4, pp. 625--636, 2021, doi: 10.1109/TSUSC.2020.3028124.
 
-\bibitem{ref5} F. Tao, H. Zhang, A. Liu, and A. Y. C. Nee, ``Digital Twin in Industry: State-of-the-Art,'' \textit{IEEE Trans. Ind. Informat.}, vol. 15, no. 4, pp. 2405--2415, 2019, doi: 10.1109/TII.2018.2873186.
+\bibitem{cloud2024tee} ``Securing AI inference in the cloud: Is CPU-GPU confidential computing ready?'' in \textit{Proc. IEEE 17th Int. Conf. Cloud Comput. (CLOUD)}, 2024, doi: 10.1109/CLOUD62652.2024.00028.
 
-\bibitem{ref6} A. Fuller, Z. Fan, C. Day, and C. Barlow, ``Digital Twin: Enabling Technologies, Challenges and Open Research,'' \textit{IEEE Access}, vol. 8, pp. 108952--108971, 2020, doi: 10.1109/ACCESS.2020.2998358.
+\bibitem{jcc2022joint} ``Towards a secure joint cloud with confidential computing,'' in \textit{Proc. IEEE Int. Conf. Joint Cloud Comput. (JCC)}, 2022, doi: 10.1109/JCC56469.2022.00020.
 
-\bibitem{ref7} W. Kritzinger, M. Karner, G. Traar, J. Henjes, and W. Sihn, ``Digital Twin in Manufacturing: A Categorical Literature Review and Classification,'' \textit{IFAC-PapersOnLine}, vol. 51, no. 11, pp. 1016--1022, 2018, doi: 10.1016/j.ifacol.2018.06.244.
+\bibitem{beloglazov2012energy} A. Beloglazov, J. Abawajy, and R. Buyya, ``Energy-aware resource allocation heuristics for efficient management of data centers for cloud computing,'' \textit{Future Gener. Comput. Syst.}, vol. 28, no. 5, pp. 755--768, 2012, doi: 10.1016/j.future.2011.08.004.
 
-\bibitem{ref8} A. Beloglazov, J. Abawajy, and R. Buyya, ``Energy-Aware Resource Allocation Heuristics for Efficient Management of Data Centers for Cloud Computing,'' \textit{Future Generation Computer Systems}, vol. 28, no. 5, pp. 755--768, 2012, doi: 10.1016/j.future.2011.08.004.
+\bibitem{wiesner2021waitawhile} P. Wiesner, I. Behnke, D. Scheinert, K. Gontarska, and L. Thamsen, ``Let's wait awhile: How temporal workload shifting can reduce carbon emissions in the cloud,'' in \textit{Proc. 22nd Int. Middleware Conf. (Middleware '21)}, 2021, pp. 260--272, doi: 10.1145/3464298.3493399.
 
-\bibitem{ref9} Y. Jiang, R. Basu Roy, R. Kanakagiri, and D. Tiwari, ``PPoPP25\_WaterWise,'' GitHub repository, 2025. [Online]. Available: \url{https://github.com/LukeJYK/PPoPP25_WaterWise}
+\bibitem{souza2023casper} A. Souza et al., ``CASPER: Carbon-aware scheduling and provisioning for distributed web services,'' in \textit{Proc. 14th Int. Green Sustain. Comput. Conf. (IGSC '23)}, 2023, doi: 10.1145/3634769.3634812.
 
-\bibitem{ref10} Y. Jiang, R. Basu Roy, R. Kanakagiri, and D. Tiwari, ``WaterWise: Co-optimizing Carbon- and Water-Footprint Toward Environmentally Sustainable Cloud Computing (Version 3),'' Zenodo, 2025, doi: 10.5281/zenodo.14583915.
+\bibitem{hanafy2023carbonscaler} W. A. Hanafy, Q. Liang, N. Bashir, D. Irwin, and P. Shenoy, ``CarbonScaler: Leveraging cloud workload elasticity for optimizing carbon-efficiency,'' \textit{Proc. ACM Meas. Anal. Comput. Syst.}, 2023, doi: 10.1145/3626788.
 
-\bibitem{ref11} Alibaba Cluster Data, ``Cluster trace GPU v2020: README,'' 2020. [Online]. Available: \url{https://github.com/alibaba/clusterdata/blob/master/cluster-trace-gpu-v2020/README.md}. Accessed: Oct. 11, 2026.
+\bibitem{sukprasert2024limitations} T. Sukprasert, A. Souza, N. Bashir, D. Irwin, and P. J. Shenoy, ``On the limitations of carbon-aware temporal and spatial workload shifting in the cloud,'' in \textit{Proc. 19th Eur. Conf. Comput. Syst. (EuroSys '24)}, 2024, doi: 10.1145/3627703.3650079.
 
-\bibitem{ref12} CloudSim Plus Project, ``CloudSim Plus: A Java Object-Oriented Simulation Framework for Cloud and Fog Computing,'' GitHub, 2026. [Online]. Available: \url{https://github.com/cloudsimplus/cloudsimplus}
+\bibitem{bian2024cafe} J. Bian, L. Wang, S. Ren, and J. Xu, ``CAFE: Carbon-aware federated learning in geographically distributed data centers,'' in \textit{Proc. 15th ACM Int. Conf. Future Energy Syst. (e-Energy '24)}, 2024, doi: 10.1145/3632775.3661970.
 
-\bibitem{ref13} Large-scale Sustainable Computing Lab, ``EcoKube: Heterogeneous Edge-Cloud Simulation and Kubernetes Replay,'' GitHub, 2026. [Online]. Available: \url{https://github.com/g-uva/EcoKube}
+\bibitem{wiesner2024fedzero} P. Wiesner et al., ``FedZero: Leveraging renewable excess energy in federated learning,'' in \textit{Proc. 15th ACM Int. Conf. Future Energy Syst. (e-Energy '24)}, 2024, doi: 10.1145/3632775.3639589.
 
-\bibitem{ref14} R.-R. Zhong, Y.-X. Feng, X.-J. Song \textit{et al.}, ``Edge Computing Empowered Digital Twin: An End-to-End Computing Task Scheduling Approach,'' in \textit{Proc. 2024 IEEE 20th Int. Conf. Automation Science and Engineering (CASE)}, 2024, doi: 10.1109/CASE59546.2024.10711331.
+\bibitem{islam2015watch} M. A. Islam, S. Ren, G. Quan, M. Z. Shakir, and A. V. Vasilakos, ``Water-constrained geographic load balancing in data centers,'' \textit{IEEE Trans. Cloud Comput.}, vol. 5, no. 2, pp. 208--220, 2017, doi: 10.1109/TCC.2015.2453982.
+
+\bibitem{li2023clover} B. Li et al., ``Clover: Toward sustainable AI with carbon-aware machine learning inference service,'' in \textit{Proc. Int. Conf. High Perform. Comput., Netw., Storage Anal. (SC '23)}, 2023, doi: 10.1145/3581784.3607034.
+
+\bibitem{tcc2023emo} Z. Chen et al., ``Multi-objective cloud task scheduling optimization based on evolutionary multi-factor algorithm,'' \textit{IEEE Trans. Cloud Comput.}, 2023, doi: 10.1109/TCC.2023.3315014.
+
+\bibitem{tcc2017ga} X. Liu et al., ``A Johnson's-rule-based genetic algorithm for two-stage-task scheduling problem in data-centers of cloud computing,'' \textit{IEEE Trans. Cloud Comput.}, 2017, doi: 10.1109/TCC.2017.2693187.
+
+\bibitem{fgcs2019nn} M. Adhikari and T. Amgoth, ``Neural network based multi-objective evolutionary algorithm for dynamic workflow scheduling in cloud computing,'' \textit{Future Gener. Comput. Syst.}, 2019, doi: 10.1016/j.future.2019.08.012.
+
+\bibitem{fgcs2014many} F. Zhang et al., ``Multi-objective scheduling of many tasks in cloud platforms,'' \textit{Future Gener. Comput. Syst.}, vol. 37, pp. 309--320, 2014, doi: 10.1016/j.future.2014.03.009.
+
+\bibitem{zhang2021sinan} Y. Zhang, W. Hua, Z. Zhou, G. E. Suh, and C. Delimitrou, ``Sinan: ML-based and QoS-aware resource management for cloud microservices,'' in \textit{Proc. 26th ACM Int. Conf. Archit. Support Program. Lang. Oper. Syst. (ASPLOS '21)}, 2021, pp. 167--181, doi: 10.1145/3445814.3446693.
+
+\bibitem{tao2019dt} F. Tao, H. Zhang, A. Liu, and A. Y. C. Nee, ``Digital twin in industry: State-of-the-art,'' \textit{IEEE Trans. Ind. Informat.}, vol. 15, no. 4, pp. 2405--2415, 2019, doi: 10.1109/TII.2018.2873186.
+
+\bibitem{fuller2020dt} A. Fuller, Z. Fan, C. Day, and C. Barlow, ``Digital twin: Enabling technologies, challenges and open research,'' \textit{IEEE Access}, vol. 8, pp. 108952--108971, 2020, doi: 10.1109/ACCESS.2020.2998358.
+
+\bibitem{kritzinger2018dt} W. Kritzinger, M. Karner, G. Traar, J. Henjes, and W. Sihn, ``Digital twin in manufacturing: A categorical literature review and classification,'' \textit{IFAC-PapersOnLine}, vol. 51, no. 11, pp. 1016--1022, 2018, doi: 10.1016/j.ifacol.2018.06.244.
+
+\bibitem{liu2022dt} T. Liu, L. Tang, W. Wang, Q. Chen, and X. Zeng, ``Digital-twin-assisted task offloading based on edge collaboration in the digital twin edge network,'' \textit{IEEE Internet Things J.}, vol. 9, no. 2, pp. 1427--1444, Jan. 2022, doi: 10.1109/JIOT.2021.3086961.
+
+\bibitem{vaezi2023dt} M. Vaezi, K. Noroozi, T. D. Todd, D. Zhao, and G. Karakostas, ``Digital twin placement for minimum application request delay with data age targets,'' \textit{IEEE Internet Things J.}, vol. 10, no. 13, pp. 11547--11557, Jul. 2023, doi: 10.1109/JIOT.2023.3244424.
+
+\bibitem{zhong2024dt} R.-R. Zhong, Y.-X. Feng, X.-J. Song et al., ``Edge computing empowered digital twin: An end-to-end computing task scheduling approach,'' in \textit{Proc. IEEE 20th Int. Conf. Autom. Sci. Eng. (CASE)}, 2024, doi: 10.1109/CASE59546.2024.10711331.
+
+\bibitem{xu2025dt} C. Xu et al., ``Digital-twin-assisted intelligent secure task offloading and caching in blockchain-based vehicular edge computing networks,'' \textit{IEEE Internet Things J.}, vol. 12, no. 4, pp. 4128--4143, Feb. 2025, doi: 10.1109/JIOT.2024.3482870.
+
+\bibitem{liu2023acesniper} W. Liu et al., ``Ace-Sniper: Cloud--edge collaborative scheduling framework with DNN inference latency modeling on heterogeneous devices,'' \textit{IEEE Trans. Comput.-Aided Design Integr. Circuits Syst.}, vol. 43, no. 2, pp. 534--547, 2024, doi: 10.1109/TCAD.2023.3314388.
+
+\bibitem{mic2022hpc} ``Confidential high-performance computing in the public cloud,'' \textit{IEEE Internet Comput.}, 2022, doi: 10.1109/MIC.2022.3226757.
+
+\bibitem{seed2022sok} ``SoK: Limitations of confidential computing via TEEs for high-performance compute systems,'' in \textit{Proc. IEEE Int. Symp. Secure Private Execution Environ. Design (SEED)}, 2022, doi: 10.1109/SEED55351.2022.00021.
+
+\bibitem{calheiros2011cloudsim} R. N. Calheiros, R. Ranjan, A. Beloglazov, C. A. F. De Rose, and R. Buyya, ``CloudSim: A toolkit for modeling and simulation of cloud computing environments and evaluation of resource provisioning algorithms,'' \textit{Softw.: Pract. Exper.}, vol. 41, no. 1, pp. 23--50, 2011, doi: 10.1002/spe.995.
+
+\bibitem{silvafilho2017cloudsimplus} M. C. Silva Filho, R. L. Oliveira, C. C. Monteiro, P. R. M. In\'acio, and M. M. Freire, ``CloudSim Plus: A cloud computing simulation framework pursuing software engineering principles for improved modularity, extensibility and correctness,'' in \textit{Proc. IFIP/IEEE Symp. Integr. Netw. Service Manage. (IM)}, 2017, doi: 10.23919/INM.2017.7987304.
+
+\bibitem{verma2015borg} A. Verma, L. Pedrosa, M. Korupolu, D. Oppenheimer, E. Tune, and J. Wilkes, ``Large-scale cluster management at Google with Borg,'' in \textit{Proc. 10th Eur. Conf. Comput. Syst. (EuroSys '15)}, 2015, doi: 10.1145/2741948.2741964.
+
+\bibitem{weng2022mlaas} Q. Weng et al., ``MLaaS in the wild: Workload analysis and scheduling in large-scale heterogeneous GPU clusters,'' in \textit{Proc. 19th USENIX Symp. Netw. Syst. Design Implement. (NSDI '22)}, 2022, pp. 945--960. [Online]. Available: \url{https://www.usenix.org/conference/nsdi22/presentation/weng}
+
+\bibitem{dou2017carbon} H. Dou, Y. Qi, W. Wei, and H. Song, ``Carbon-aware electricity cost minimization for sustainable data centers,'' \textit{IEEE Trans. Sustain. Comput.}, vol. 2, no. 2, pp. 211--223, 2017, doi: 10.1109/TSUSC.2017.2711925.
 
 \end{thebibliography}
 
