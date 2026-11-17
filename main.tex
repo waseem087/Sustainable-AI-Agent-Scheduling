@@ -144,14 +144,13 @@ Table~\ref{tab:ww_repro} and Fig.~\ref{fig:ww_baseline} report the exact measure
 
 On the heavier Alibaba trace (seeds $40$--$42$, $\mathrm{node\_capacity}=35$), a sharper operational limitation appears. While \texttt{base} completes $15{,}134 \pm 17$ jobs in $35.93$~s wall time ($40{,}790.65$ carbon, $1{,}120.99$ water, $4{,}558.16$~s mean latency), \texttt{waterwise} completes $14{,}855 \pm 38$ jobs in $137.60$~s ($35{,}736.54$ carbon, $1{,}047.96$ water). Single-objective \texttt{carbon\_opt} and \texttt{water\_opt} drop to $12{,}562$ and $12{,}569$ completed jobs and require $598.12$~s and $571.31$~s of solver time, because deferring jobs without future queue visibility creates severe LP backlog under sustained contention.
 
-\begin{table}[!t]
+\begin{table*}[!t]
 \caption{Reproduced WaterWise Baseline Results on Local Host (1,440 Steps, Seed 40--42)}
 \label{tab:ww_repro}
 \centering
 \scriptsize
-\setlength{\tabcolsep}{2.5pt}
+\setlength{\tabcolsep}{6pt}
 \renewcommand{\arraystretch}{1.15}
-\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}llccccc@{}}
 \toprule
 \textbf{Trace / Order} & \textbf{Optimizer (th)} & \textbf{Jobs} & \textbf{Carbon} & \textbf{Water} & \textbf{Lat.\ (s)} & \textbf{Wall (s)} \\
@@ -172,9 +171,8 @@ Alibaba (\texttt{listdir}) & WaterWise (0.5, 3s) & 14,855 & 35,736.54 & 1,047.96
 Alibaba (\texttt{listdir}) & Carbon-Only (0.5) & 12,562 & 41,076.79 & 1,146.62 & 4,396.04 & 598.12 \\
 Alibaba (\texttt{listdir}) & Water-Only (0.5) & 12,569 & 41,118.53 & 1,147.73 & 4,393.56 & 571.31 \\
 \bottomrule
-\end{tabular}%
-}
-\end{table}
+\end{tabular}
+\end{table*}
 
 \begin{figure}[!t]
 \centering
@@ -193,6 +191,7 @@ Fig.~\ref{fig:arch} illustrates the EcoTrust-DT pipeline. Every incoming AI-agen
 
 \begin{figure}[!t]
 \centering
+\resizebox{0.94\columnwidth}{!}{%
 \begin{tikzpicture}[
   box/.style={draw, rounded corners=2pt, align=center, text width=0.70\columnwidth, minimum height=0.58cm, font=\footnotesize},
   arr/.style={-{Latex[length=1.8mm]}, thick},
@@ -209,7 +208,8 @@ Fig.~\ref{fig:arch} illustrates the EcoTrust-DT pipeline. Every incoming AI-agen
 \draw[arr] (d) -- (e);
 \draw[arr] (e) -- (f);
 \draw[arr, dashed] (f.east) -- ++(0.22,0) |- node[pos=0.25, right, font=\scriptsize]{MAE} (c.east);
-\end{tikzpicture}
+\end{tikzpicture}%
+}
 \caption{EcoTrust-DT scheduling and governance architecture.}
 \label{fig:arch}
 \end{figure}
