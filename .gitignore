@@ -24,3 +24,7 @@ Thumbs.db
 cloud.md
 cloud.docx
 G32_*.pdf
+
+# Large raw simulation JSON dumps (summaries & figures are tracked)
+results/baseline_raw/
+results/baseline_test/

@@ -1,0 +1,12 @@
+{
+  "os": "Windows-11-10.0.26200-SP0",
+  "machine": "AMD64",
+  "cpu": "Intel(R) Core(TM) i7-8665U CPU @ 1.90GHz",
+  "logical_cpus": 8,
+  "ram_gb": 15.82,
+  "python": "3.14.4",
+  "numpy": "2.4.6",
+  "pandas": "3.0.3",
+  "pulp": "2.9.0",
+  "solver": "PuLP PULP_CBC_CMD"
+}
