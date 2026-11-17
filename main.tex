@@ -149,8 +149,9 @@ On the heavier Alibaba trace (seeds $40$--$42$, $\mathrm{node\_capacity}=35$), a
 \label{tab:ww_repro}
 \centering
 \scriptsize
-\setlength{\tabcolsep}{3.2pt}
+\setlength{\tabcolsep}{2.5pt}
 \renewcommand{\arraystretch}{1.15}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}llccccc@{}}
 \toprule
 \textbf{Trace / Order} & \textbf{Optimizer (th)} & \textbf{Jobs} & \textbf{Carbon} & \textbf{Water} & \textbf{Lat.\ (s)} & \textbf{Wall (s)} \\
@@ -171,7 +172,8 @@ Alibaba (\texttt{listdir}) & WaterWise (0.5, 3s) & 14,855 & 35,736.54 & 1,047.96
 Alibaba (\texttt{listdir}) & Carbon-Only (0.5) & 12,562 & 41,076.79 & 1,146.62 & 4,396.04 & 598.12 \\
 Alibaba (\texttt{listdir}) & Water-Only (0.5) & 12,569 & 41,118.53 & 1,147.73 & 4,393.56 & 571.31 \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \begin{figure}[!t]
@@ -192,7 +194,7 @@ Fig.~\ref{fig:arch} illustrates the EcoTrust-DT pipeline. Every incoming AI-agen
 \begin{figure}[!t]
 \centering
 \begin{tikzpicture}[
-  box/.style={draw, rounded corners=2pt, align=center, text width=0.80\columnwidth, minimum height=0.62cm, font=\footnotesize},
+  box/.style={draw, rounded corners=2pt, align=center, text width=0.70\columnwidth, minimum height=0.58cm, font=\footnotesize},
   arr/.style={-{Latex[length=1.8mm]}, thick},
   node distance=0.35cm]
 \node[box] (a) {AI-Agent Request $r$: GPU mem, SLO, data class, residency};
@@ -206,7 +208,7 @@ Fig.~\ref{fig:arch} illustrates the EcoTrust-DT pipeline. Every incoming AI-agen
 \draw[arr] (c) -- (d);
 \draw[arr] (d) -- (e);
 \draw[arr] (e) -- (f);
-\draw[arr, dashed] (f.east) -- ++(0.32,0) |- node[pos=0.25, right, font=\scriptsize]{MAE} (c.east);
+\draw[arr, dashed] (f.east) -- ++(0.22,0) |- node[pos=0.25, right, font=\scriptsize]{MAE} (c.east);
 \end{tikzpicture}
 \caption{EcoTrust-DT scheduling and governance architecture.}
 \label{fig:arch}
